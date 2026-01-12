@@ -1,12 +1,268 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+// SENTINEL X PRIME - Main Trading Intelligence Dashboard
+
+import { useState } from "react";
+import { Vector, MarketType } from "@/types/trading";
+import { useSignalEngine } from "@/hooks/useSignalEngine";
+import { Header } from "@/components/trading/Header";
+import { VectorSelector } from "@/components/trading/VectorSelector";
+import { EngineStatus } from "@/components/trading/EngineStatus";
+import { InstitutionalCard } from "@/components/trading/InstitutionalCard";
+import { SignalFeed } from "@/components/trading/SignalFeed";
+import { RiskPanel } from "@/components/trading/RiskPanel";
+import { StrategyPanel } from "@/components/trading/StrategyPanel";
+import { BrokerStatus } from "@/components/trading/BrokerStatus";
+import { PerformanceStats } from "@/components/trading/PerformanceStats";
+import { MarketTypeToggle } from "@/components/trading/MarketTypeToggle";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  RefreshCw, 
+  Trash2, 
+  Settings,
+  LayoutDashboard,
+  BarChart3,
+  Plug
+} from "lucide-react";
 
 const Index = () => {
+  const [selectedVector, setSelectedVector] = useState<Vector | undefined>(undefined);
+  const [marketType, setMarketType] = useState<MarketType>("REAL");
+  
+  const {
+    signals,
+    stats,
+    riskGate,
+    isRunning,
+    startEngine,
+    stopEngine,
+    pauseEngine,
+    clearSignals,
+    toggleRiskLock,
+    setSelectedVector: updateVector
+  } = useSignalEngine({ selectedVector });
+
+  const handleVectorChange = (vector: Vector | undefined) => {
+    setSelectedVector(vector);
+    updateVector(vector);
+  };
+
+  // Get the most recent pending signal for institutional card
+  const latestPendingSignal = signals.find(s => s.status === "PENDING") || signals[0];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen bg-background">
+      <Header />
+      
+      <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Top Controls Row */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <MarketTypeToggle value={marketType} onChange={setMarketType} />
+            <VectorSelector 
+              selectedVector={selectedVector} 
+              onSelect={handleVectorChange} 
+            />
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={clearSignals}
+              className="gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Clear
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                stopEngine();
+                setTimeout(startEngine, 100);
+              }}
+              className="gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reset
+            </Button>
+          </div>
+        </div>
+
+        {/* Engine Status Bar */}
+        <EngineStatus
+          stats={stats}
+          riskGate={riskGate}
+          isRunning={isRunning}
+          onStart={startEngine}
+          onStop={stopEngine}
+          onPause={pauseEngine}
+          onToggleLock={toggleRiskLock}
+        />
+
+        {/* Main Content */}
+        <Tabs defaultValue="dashboard" className="space-y-6">
+          <TabsList className="bg-secondary/50">
+            <TabsTrigger value="dashboard" className="gap-2">
+              <LayoutDashboard className="w-4 h-4" />
+              Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="gap-2">
+              <BarChart3 className="w-4 h-4" />
+              Analytics
+            </TabsTrigger>
+            <TabsTrigger value="connections" className="gap-2">
+              <Plug className="w-4 h-4" />
+              Connections
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="dashboard" className="space-y-6">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              {/* Main Signal Display */}
+              <div className="xl:col-span-2 space-y-6">
+                {/* Institutional Card */}
+                <InstitutionalCard signal={latestPendingSignal} />
+                
+                {/* Signal Feed */}
+                <Card className="p-4 border border-border/50 gradient-card">
+                  <SignalFeed signals={signals} />
+                </Card>
+              </div>
+
+              {/* Sidebar */}
+              <div className="space-y-6">
+                <RiskPanel riskGate={riskGate} />
+                <StrategyPanel marketType={marketType} />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="analytics" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <PerformanceStats signals={signals} />
+              
+              <Card className="p-6 border border-border/50 gradient-card">
+                <div className="flex items-center gap-2 mb-4">
+                  <BarChart3 className="w-5 h-5 text-primary" />
+                  <h3 className="font-bold">Session Analysis</h3>
+                </div>
+                
+                <div className="space-y-4">
+                  {["London", "NewYork", "Tokyo", "Sydney"].map((session) => {
+                    const sessionSignals = signals.filter(s => s.session === session);
+                    const percentage = signals.length > 0 
+                      ? (sessionSignals.length / signals.length) * 100 
+                      : 0;
+                    
+                    return (
+                      <div key={session}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm">{session}</span>
+                          <span className="text-sm font-mono">{sessionSignals.length}</span>
+                        </div>
+                        <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-primary transition-all"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+
+              <Card className="p-6 border border-border/50 gradient-card lg:col-span-2">
+                <div className="flex items-center gap-2 mb-4">
+                  <Settings className="w-5 h-5 text-primary" />
+                  <h3 className="font-bold">Strategy Performance</h3>
+                </div>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {Array.from(new Set(signals.map(s => s.strategy))).map((strategy) => {
+                    const strategySignals = signals.filter(s => s.strategy === strategy);
+                    const executed = strategySignals.filter(s => s.status === "EXECUTED").length;
+                    
+                    return (
+                      <div 
+                        key={strategy}
+                        className="p-3 bg-secondary/30 rounded-lg"
+                      >
+                        <p className="text-sm font-medium truncate" title={strategy}>
+                          {strategy}
+                        </p>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-xs text-muted-foreground">
+                            {strategySignals.length} signals
+                          </span>
+                          <span className="text-xs font-mono text-success">
+                            {executed} exec
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="connections" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <BrokerStatus />
+              
+              <Card className="p-6 border border-border/50 gradient-card">
+                <div className="flex items-center gap-2 mb-4">
+                  <Settings className="w-5 h-5 text-primary" />
+                  <h3 className="font-bold">Engine Configuration</h3>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">Scan Interval</span>
+                    <span className="font-mono text-sm">2000ms</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">T+4 Protocol</span>
+                    <span className="font-mono text-sm text-success">Enabled</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">Max Signals</span>
+                    <span className="font-mono text-sm">50</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">Auto-Execution</span>
+                    <span className="font-mono text-sm text-destructive">Disabled</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">Mode</span>
+                    <span className="font-mono text-sm text-warning">Simulation</span>
+                  </div>
+                </div>
+
+                <div className="mt-6 p-4 bg-muted/20 rounded-lg border border-border/50">
+                  <p className="text-sm text-muted-foreground">
+                    This engine runs in simulation mode. Connect broker APIs and enable 
+                    auto-execution to place live trades. Always use proper risk management.
+                  </p>
+                </div>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {/* Footer */}
+        <footer className="text-center py-6 border-t border-border/30">
+          <p className="text-sm text-muted-foreground">
+            SENTINEL X PRIME — Professional Trading Intelligence System
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Decision Intelligence Engine • Not Financial Advice
+          </p>
+        </footer>
+      </main>
     </div>
   );
 };
