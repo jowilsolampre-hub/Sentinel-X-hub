@@ -34,17 +34,27 @@ const Index = () => {
     stats,
     riskGate,
     isRunning,
+    sessionLock,
+    activeCooldowns,
     startEngine,
     stopEngine,
     pauseEngine,
     clearSignals,
     toggleRiskLock,
-    setSelectedVector: updateVector
+    setSelectedVector: updateVector,
+    acknowledgeSignal
   } = useSignalEngine({ selectedVector });
 
   const handleVectorChange = (vector: Vector | undefined) => {
     setSelectedVector(vector);
     updateVector(vector);
+  };
+
+  const handleStartEngine = () => {
+    const result = startEngine();
+    if (!result.success) {
+      console.log(`[UI] Engine start blocked: ${result.reason}`);
+    }
   };
 
   // Get the most recent pending signal for institutional card
@@ -55,6 +65,39 @@ const Index = () => {
       <Header />
       
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {/* Session Lock Status Banner */}
+        {sessionLock.isLocked && (
+          <div className={`rounded-lg p-3 flex items-center justify-between ${
+            sessionLock.canScan 
+              ? "bg-success/10 border border-success/30" 
+              : "bg-warning/10 border border-warning/30"
+          }`}>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${
+                sessionLock.canScan ? "bg-success animate-pulse" : "bg-warning"
+              }`} />
+              <span className="text-sm font-medium">
+                Session Lock: {sessionLock.lockedSession}
+              </span>
+              {sessionLock.lockTime && (
+                <span className="text-xs text-muted-foreground">
+                  (since {sessionLock.lockTime.toLocaleTimeString()})
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-muted-foreground">
+                {activeCooldowns} assets on cooldown
+              </span>
+              {!sessionLock.canScan && (
+                <span className="text-xs text-warning font-medium">
+                  {sessionLock.scanBlockReason}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Top Controls Row */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex flex-col sm:flex-row gap-4">
@@ -80,7 +123,7 @@ const Index = () => {
               size="sm"
               onClick={() => {
                 stopEngine();
-                setTimeout(startEngine, 100);
+                setTimeout(handleStartEngine, 100);
               }}
               className="gap-2"
             >
@@ -95,7 +138,7 @@ const Index = () => {
           stats={stats}
           riskGate={riskGate}
           isRunning={isRunning}
-          onStart={startEngine}
+          onStart={handleStartEngine}
           onStop={stopEngine}
           onPause={pauseEngine}
           onToggleLock={toggleRiskLock}
@@ -216,36 +259,42 @@ const Index = () => {
               <Card className="p-6 border border-border/50 gradient-card">
                 <div className="flex items-center gap-2 mb-4">
                   <Settings className="w-5 h-5 text-primary" />
-                  <h3 className="font-bold">Engine Configuration</h3>
+                  <h3 className="font-bold">Engine Configuration (v2)</h3>
                 </div>
                 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">Scan Interval</span>
-                    <span className="font-mono text-sm">2000ms</span>
+                    <span className="text-sm">Session Lock</span>
+                    <span className={`font-mono text-sm ${sessionLock.isLocked ? "text-success" : "text-muted-foreground"}`}>
+                      {sessionLock.isLocked ? `Locked (${sessionLock.lockedSession})` : "Unlocked"}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">T+4 Protocol</span>
+                    <span className="text-sm">Asset Cooldowns</span>
+                    <span className="font-mono text-sm">{activeCooldowns} active</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">Missed-Trade Detection</span>
                     <span className="font-mono text-sm text-success">Enabled</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">Max Signals</span>
-                    <span className="font-mono text-sm">50</span>
+                    <span className="text-sm">OTC Honesty Layer</span>
+                    <span className="font-mono text-sm text-success">Enabled</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">Auto-Execution</span>
-                    <span className="font-mono text-sm text-destructive">Disabled</span>
+                    <span className="text-sm">T+4 Protocol</span>
+                    <span className="font-mono text-sm text-success">Enforced</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">Mode</span>
-                    <span className="font-mono text-sm text-warning">Simulation</span>
+                    <span className="text-sm">Strategy Eligibility Matrix</span>
+                    <span className="font-mono text-sm text-success">Active</span>
                   </div>
                 </div>
 
                 <div className="mt-6 p-4 bg-muted/20 rounded-lg border border-border/50">
                   <p className="text-sm text-muted-foreground">
-                    This engine runs in simulation mode. Connect broker APIs and enable 
-                    auto-execution to place live trades. Always use proper risk management.
+                    <strong>v2 Backend Active:</strong> Session-lock enforcement, asset-level cooldowns, 
+                    missed-trade invalidation, and OTC data honesty layer are now operational.
                   </p>
                 </div>
               </Card>

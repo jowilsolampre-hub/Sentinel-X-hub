@@ -1,8 +1,28 @@
-// SENTINEL X PRIME - Signal Engine Hook
+// SENTINEL X PRIME - Signal Engine Hook (v2 PATCHED)
+// Includes: Session-lock, Asset cooldowns, Missed-trade invalidation, OTC honesty
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Signal, Vector, EngineStats, RiskGate } from "@/types/trading";
-import { scanAllVectors, getCurrentSession, updateSignalStatus, resetCooldowns } from "@/engine/signalEngine";
+import { Signal, Vector, EngineStats, RiskGate, Session } from "@/types/trading";
+import { 
+  scanAllVectors, 
+  getCurrentSession, 
+  updateSignalStatus, 
+  resetCooldowns,
+  startEngineWithSessionLock,
+  stopEngineWithSessionRelease,
+  acknowledgeSignalExecution,
+  getSessionLockState,
+  canScanInCurrentSession
+} from "@/engine/signalEngine";
+import { getAllCooldowns } from "@/engine/assetCooldown";
+
+interface SessionLockInfo {
+  isLocked: boolean;
+  lockedSession: Session | null;
+  lockTime: Date | null;
+  canScan: boolean;
+  scanBlockReason: string;
+}
 
 interface UseSignalEngineOptions {
   selectedVector?: Vector;
@@ -15,12 +35,15 @@ interface UseSignalEngineReturn {
   stats: EngineStats;
   riskGate: RiskGate;
   isRunning: boolean;
-  startEngine: () => void;
+  sessionLock: SessionLockInfo;
+  activeCooldowns: number;
+  startEngine: () => { success: boolean; reason: string };
   stopEngine: () => void;
   pauseEngine: () => void;
   clearSignals: () => void;
   toggleRiskLock: () => void;
   setSelectedVector: (vector: Vector | undefined) => void;
+  acknowledgeSignal: (signalId: string) => boolean;
 }
 
 export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignalEngineReturn => {
@@ -31,9 +54,18 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
 
   const [signals, setSignals] = useState<Signal[]>([]);
   const [selectedVector, setSelectedVector] = useState<Vector | undefined>(options.selectedVector);
-  const [isRunning, setIsRunning] = useState(true);
+  const [isRunning, setIsRunning] = useState(false);  // Start stopped (require explicit start)
   const [isPaused, setIsPaused] = useState(false);
+  const [activeCooldowns, setActiveCooldowns] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const [sessionLock, setSessionLock] = useState<SessionLockInfo>({
+    isLocked: false,
+    lockedSession: null,
+    lockTime: null,
+    canScan: false,
+    scanBlockReason: "Engine not started"
+  });
   
   const [riskGate, setRiskGate] = useState<RiskGate>({
     manualLock: false,
@@ -51,13 +83,33 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     executedSignals: 0,
     winRate: 0,
     activeSession: getCurrentSession(),
-    engineStatus: "RUNNING",
+    engineStatus: "STOPPED",
     lastScanTime: new Date()
   });
 
-  // Update signal statuses
+  // Update session lock state
+  const updateSessionLockState = useCallback(() => {
+    const lockState = getSessionLockState();
+    const scanCheck = canScanInCurrentSession();
+    
+    setSessionLock({
+      isLocked: lockState.isLocked,
+      lockedSession: lockState.lockedSession,
+      lockTime: lockState.lockTime,
+      canScan: scanCheck.canScan,
+      scanBlockReason: scanCheck.reason
+    });
+  }, []);
+
+  // Update signal statuses (with missed-trade detection)
   const updateSignals = useCallback(() => {
     setSignals(prev => prev.map(signal => updateSignalStatus(signal)));
+  }, []);
+
+  // Update cooldown count
+  const updateCooldownCount = useCallback(() => {
+    const cooldowns = getAllCooldowns();
+    setActiveCooldowns(cooldowns.length);
   }, []);
 
   // Engine scan loop
@@ -65,6 +117,14 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     if (riskGate.manualLock) return;
     if (riskGate.currentDailyTrades >= riskGate.maxDailyTrades) return;
     if (riskGate.currentConsecutiveLosses >= riskGate.maxConsecutiveLosses) return;
+
+    // Check session lock before scanning
+    const scanCheck = canScanInCurrentSession();
+    if (!scanCheck.canScan) {
+      console.log(`[HOOK] Scan blocked: ${scanCheck.reason}`);
+      updateSessionLockState();
+      return;
+    }
 
     const newSignals = scanAllVectors(selectedVector);
     
@@ -83,25 +143,40 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
       activeSession: getCurrentSession(),
       lastScanTime: new Date()
     }));
-  }, [selectedVector, maxSignals, riskGate]);
+    
+    updateCooldownCount();
+    updateSessionLockState();
+  }, [selectedVector, maxSignals, riskGate, updateSessionLockState, updateCooldownCount]);
 
-  // Start engine
+  // Start engine with session lock
   const startEngine = useCallback(() => {
-    setIsRunning(true);
-    setIsPaused(false);
-    setStats(prev => ({ ...prev, engineStatus: "RUNNING" }));
-  }, []);
+    const result = startEngineWithSessionLock();
+    
+    if (result.success) {
+      setIsRunning(true);
+      setIsPaused(false);
+      setStats(prev => ({ ...prev, engineStatus: "RUNNING" }));
+    }
+    
+    updateSessionLockState();
+    
+    return { success: result.success, reason: result.reason };
+  }, [updateSessionLockState]);
 
-  // Stop engine
+  // Stop engine with session release
   const stopEngine = useCallback(() => {
     setIsRunning(false);
     setIsPaused(false);
+    stopEngineWithSessionRelease();
     setStats(prev => ({ ...prev, engineStatus: "STOPPED" }));
+    
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-  }, []);
+    
+    updateSessionLockState();
+  }, [updateSessionLockState]);
 
   // Pause engine
   const pauseEngine = useCallback(() => {
@@ -119,7 +194,8 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
       currentConsecutiveLosses: 0,
       currentDailyLoss: 0
     }));
-  }, []);
+    updateCooldownCount();
+  }, [updateCooldownCount]);
 
   // Toggle risk lock
   const toggleRiskLock = useCallback(() => {
@@ -127,6 +203,11 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
       ...prev,
       manualLock: !prev.manualLock
     }));
+  }, []);
+
+  // Acknowledge signal (for missed-trade tracking)
+  const acknowledgeSignal = useCallback((signalId: string): boolean => {
+    return acknowledgeSignalExecution(signalId);
   }, []);
 
   // Main effect for engine loop
@@ -149,6 +230,7 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
   useEffect(() => {
     const pending = signals.filter(s => s.status === "PENDING").length;
     const executed = signals.filter(s => s.status === "EXECUTED").length;
+    const missed = signals.filter(s => s.status === "MISSED").length;
     const wins = signals.filter(s => s.result === "WIN").length;
     const total = signals.filter(s => s.result).length;
     
@@ -160,16 +242,24 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     }));
   }, [signals]);
 
+  // Initialize session state on mount
+  useEffect(() => {
+    updateSessionLockState();
+  }, [updateSessionLockState]);
+
   return {
     signals,
     stats,
     riskGate,
     isRunning: isRunning && !isPaused,
+    sessionLock,
+    activeCooldowns,
     startEngine,
     stopEngine,
     pauseEngine,
     clearSignals,
     toggleRiskLock,
-    setSelectedVector
+    setSelectedVector,
+    acknowledgeSignal
   };
 };
