@@ -1,7 +1,7 @@
-// SENTINEL X PRIME - Main Trading Intelligence Dashboard
+// SENTINEL X PRIME - Main Trading Intelligence Dashboard (v3)
 
 import { useState } from "react";
-import { Vector, MarketType } from "@/types/trading";
+import { Vector, MarketType, Session } from "@/types/trading";
 import { useSignalEngine } from "@/hooks/useSignalEngine";
 import { Header } from "@/components/trading/Header";
 import { VectorSelector } from "@/components/trading/VectorSelector";
@@ -13,6 +13,9 @@ import { StrategyPanel } from "@/components/trading/StrategyPanel";
 import { BrokerStatus } from "@/components/trading/BrokerStatus";
 import { PerformanceStats } from "@/components/trading/PerformanceStats";
 import { MarketTypeToggle } from "@/components/trading/MarketTypeToggle";
+import { MarketSelector } from "@/components/trading/MarketSelector";
+import { GuruStrategyPanel } from "@/components/trading/GuruStrategyPanel";
+import { PerformanceDashboard } from "@/components/trading/PerformanceDashboard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,12 +25,17 @@ import {
   Settings,
   LayoutDashboard,
   BarChart3,
-  Plug
+  Plug,
+  Trophy
 } from "lucide-react";
+import { detectActiveSession } from "@/engine/sessionLock";
 
 const Index = () => {
   const [selectedVector, setSelectedVector] = useState<Vector | undefined>(undefined);
   const [marketType, setMarketType] = useState<MarketType>("REAL");
+  
+  // Get current session for strategy panel
+  const currentSession = detectActiveSession() as Session;
   
   const {
     signals,
@@ -155,6 +163,10 @@ const Index = () => {
               <BarChart3 className="w-4 h-4" />
               Analytics
             </TabsTrigger>
+            <TabsTrigger value="strategies" className="gap-2">
+              <Trophy className="w-4 h-4" />
+              Strategies
+            </TabsTrigger>
             <TabsTrigger value="connections" className="gap-2">
               <Plug className="w-4 h-4" />
               Connections
@@ -178,11 +190,16 @@ const Index = () => {
               <div className="space-y-6">
                 <RiskPanel riskGate={riskGate} />
                 <StrategyPanel marketType={marketType} />
+                <GuruStrategyPanel marketType={marketType} currentSession={currentSession} />
               </div>
             </div>
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
+            {/* Full Performance Dashboard */}
+            <PerformanceDashboard />
+            
+            {/* Legacy Stats Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <PerformanceStats signals={signals} />
               
@@ -252,49 +269,99 @@ const Index = () => {
             </div>
           </TabsContent>
 
+          <TabsContent value="strategies" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <GuruStrategyPanel marketType="REAL" currentSession={currentSession} />
+              <GuruStrategyPanel marketType="OTC" currentSession={currentSession} />
+            </div>
+            
+            <Card className="p-6 border border-border/50 gradient-card">
+              <div className="flex items-center gap-2 mb-4">
+                <Trophy className="w-5 h-5 text-warning" />
+                <h3 className="font-bold">Strategy Eligibility Matrix</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Strategies are automatically matched to market type, vector, timeframe, and session for optimal performance.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                  <p className="text-sm font-medium">ICT Silver Bullet</p>
+                  <p className="text-xs text-muted-foreground mt-1">REAL • FOREX • London/NY</p>
+                </div>
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                  <p className="text-sm font-medium">Wyckoff Spring</p>
+                  <p className="text-xs text-muted-foreground mt-1">REAL • All Vectors • All Sessions</p>
+                </div>
+                <div className="p-3 bg-accent/10 rounded-lg border border-accent/30">
+                  <p className="text-sm font-medium">Candle Exhaustion</p>
+                  <p className="text-xs text-muted-foreground mt-1">OTC • FOREX • Active Sessions</p>
+                </div>
+                <div className="p-3 bg-accent/10 rounded-lg border border-accent/30">
+                  <p className="text-sm font-medium">Time-Cycle Reversion</p>
+                  <p className="text-xs text-muted-foreground mt-1">OTC • All Vectors • Session Opens</p>
+                </div>
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                  <p className="text-sm font-medium">SMC Order Block</p>
+                  <p className="text-xs text-muted-foreground mt-1">REAL • FOREX/INDICES • London/NY</p>
+                </div>
+                <div className="p-3 bg-accent/10 rounded-lg border border-accent/30">
+                  <p className="text-sm font-medium">False Breakout Snap</p>
+                  <p className="text-xs text-muted-foreground mt-1">OTC • All Vectors • High Volatility</p>
+                </div>
+              </div>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="connections" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Market & Broker Selector */}
+              <MarketSelector />
+              
               <BrokerStatus />
               
-              <Card className="p-6 border border-border/50 gradient-card">
+              <Card className="p-6 border border-border/50 gradient-card lg:col-span-2">
                 <div className="flex items-center gap-2 mb-4">
                   <Settings className="w-5 h-5 text-primary" />
-                  <h3 className="font-bold">Engine Configuration (v2)</h3>
+                  <h3 className="font-bold">Engine Configuration (v3)</h3>
                 </div>
                 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">Session Lock</span>
-                    <span className={`font-mono text-sm ${sessionLock.isLocked ? "text-success" : "text-muted-foreground"}`}>
-                      {sessionLock.isLocked ? `Locked (${sessionLock.lockedSession})` : "Unlocked"}
-                    </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                      <span className="text-sm">Session Lock</span>
+                      <span className={`font-mono text-sm ${sessionLock.isLocked ? "text-success" : "text-muted-foreground"}`}>
+                        {sessionLock.isLocked ? `Locked (${sessionLock.lockedSession})` : "Unlocked"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                      <span className="text-sm">Asset Cooldowns</span>
+                      <span className="font-mono text-sm">{activeCooldowns} active</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                      <span className="text-sm">Missed-Trade Detection</span>
+                      <span className="font-mono text-sm text-success">Enabled</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">Asset Cooldowns</span>
-                    <span className="font-mono text-sm">{activeCooldowns} active</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">Missed-Trade Detection</span>
-                    <span className="font-mono text-sm text-success">Enabled</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">OTC Honesty Layer</span>
-                    <span className="font-mono text-sm text-success">Enabled</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">T+4 Protocol</span>
-                    <span className="font-mono text-sm text-success">Enforced</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                    <span className="text-sm">Strategy Eligibility Matrix</span>
-                    <span className="font-mono text-sm text-success">Active</span>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                      <span className="text-sm">OTC Honesty Layer</span>
+                      <span className="font-mono text-sm text-success">Enabled</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                      <span className="text-sm">T+4 Protocol</span>
+                      <span className="font-mono text-sm text-success">Enforced</span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                      <span className="text-sm">Multi-Pair Scanner</span>
+                      <span className="font-mono text-sm text-success">Active</span>
+                    </div>
                   </div>
                 </div>
 
                 <div className="mt-6 p-4 bg-muted/20 rounded-lg border border-border/50">
                   <p className="text-sm text-muted-foreground">
-                    <strong>v2 Backend Active:</strong> Session-lock enforcement, asset-level cooldowns, 
-                    missed-trade invalidation, and OTC data honesty layer are now operational.
+                    <strong>v3 Backend Active:</strong> Market/Broker selection, Guru strategies, confidence scoring, 
+                    multi-pair scanning, and performance tracking are now operational.
                   </p>
                 </div>
               </Card>
@@ -305,7 +372,7 @@ const Index = () => {
         {/* Footer */}
         <footer className="text-center py-6 border-t border-border/30">
           <p className="text-sm text-muted-foreground">
-            SENTINEL X PRIME — Professional Trading Intelligence System
+            SENTINEL X PRIME v3 — Professional Trading Intelligence System
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             Decision Intelligence Engine • Not Financial Advice
