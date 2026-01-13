@@ -1,11 +1,11 @@
-// SENTINEL X PRIME - Signal Generation Engine
+// SENTINEL X PRIME - Signal Generation Engine (v2 PATCHED)
+// Includes: Session-lock, Asset cooldowns, Missed-trade invalidation, OTC honesty
 
 import { 
   Signal, 
   Vector, 
   Direction, 
   Session, 
-  AssetState, 
   ASSET_POOLS, 
   STRATEGIES, 
   SESSION_TIMES,
@@ -13,29 +13,49 @@ import {
   MarketType
 } from "@/types/trading";
 
+// Import v2 modules
+import { 
+  lockToCurrentSession, 
+  releaseSessionLock, 
+  canScanInCurrentSession, 
+  getSessionLockState,
+  detectActiveSession 
+} from "./sessionLock";
+import { 
+  setAssetCooldown as setCooldown, 
+  isAssetOnCooldown as checkCooldown, 
+  getAvailableAssets, 
+  resetAllCooldowns,
+  CooldownReason
+} from "./assetCooldown";
+import { 
+  updateSignalWithMissedCheck, 
+  acknowledgeSignal,
+  clearAcknowledgments 
+} from "./missedTradeHandler";
+import { 
+  validateOTCSignal, 
+  adjustOTCConfidence, 
+  enrichSignalWithMetadata,
+  generateOTCAuditEntry,
+  OTCAuditEntry
+} from "./otcHonestyLayer";
+
+// Audit log for transparency
+const auditLog: OTCAuditEntry[] = [];
+
 // Generate unique ID
 const generateId = (): string => {
   return `SX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
 
-// Get current trading session
+// Get current trading session (using session lock module)
 export const getCurrentSession = (): Session => {
-  const hour = new Date().getUTCHours();
-  
-  if (hour >= SESSION_TIMES.London.start && hour < SESSION_TIMES.London.end) {
-    return "London";
+  const lockState = getSessionLockState();
+  if (lockState.isLocked && lockState.lockedSession) {
+    return lockState.lockedSession;
   }
-  if (hour >= SESSION_TIMES.NewYork.start && hour < SESSION_TIMES.NewYork.end) {
-    return "NewYork";
-  }
-  if (hour >= SESSION_TIMES.Tokyo.start && hour < SESSION_TIMES.Tokyo.end) {
-    return "Tokyo";
-  }
-  if (hour >= SESSION_TIMES.Sydney.start || hour < SESSION_TIMES.Sydney.end) {
-    return "Sydney";
-  }
-  
-  return "Closed";
+  return detectActiveSession();
 };
 
 // Get session weight for probability calculation
@@ -51,23 +71,42 @@ const getSessionWeight = (session: Session, vector: Vector): number => {
   return weights[session][vector];
 };
 
-// Calculate confidence score
+// Check if session favors OTC trading
+const sessionFavorsOTC = (session: Session): boolean => {
+  // OTC is more favorable during off-hours or Asian session
+  return session === "Tokyo" || session === "Sydney" || session === "Closed";
+};
+
+// Calculate confidence score with OTC honesty adjustments
 const calculateConfidence = (
   session: Session, 
   vector: Vector, 
-  strategyPriority: number
+  strategyPriority: number,
+  marketType: MarketType
 ): number => {
   const baseScore = 95;
   const sessionBonus = getSessionWeight(session, vector) * 20;
   const strategyBonus = (5 - strategyPriority) * 0.5;
   const randomVariance = (Math.random() - 0.5) * 2;
   
-  return Math.min(99.9, Math.max(95, baseScore + sessionBonus + strategyBonus + randomVariance));
+  let rawConfidence = Math.min(99.9, Math.max(95, baseScore + sessionBonus + strategyBonus + randomVariance));
+  
+  // Apply OTC honesty adjustments
+  if (marketType === "OTC") {
+    const { adjustedConfidence } = adjustOTCConfidence(
+      rawConfidence / 100,
+      marketType,
+      false,  // volatility check would go here
+      sessionFavorsOTC(session)
+    );
+    rawConfidence = adjustedConfidence * 100;
+  }
+  
+  return rawConfidence;
 };
 
 // Determine direction based on strategy
 const determineDirection = (strategyId: string): Direction => {
-  // Strategy-specific direction bias
   const buyBiasStrategies = ["wyckoff", "supply-demand", "time-cycle"];
   const sellBiasStrategies = ["liquidity-stop", "false-breakout"];
   
@@ -99,47 +138,68 @@ const getTimeframe = (marketType: MarketType, vector: Vector): Timeframe => {
   return options[Math.floor(Math.random() * options.length)];
 };
 
-// Asset state management
-const assetStates: Map<string, AssetState> = new Map();
-
-// Check if asset is on cooldown
-const isAssetOnCooldown = (asset: string): boolean => {
-  const state = assetStates.get(asset);
-  if (!state || !state.cooldownUntil) return false;
-  return new Date() < state.cooldownUntil;
-};
-
-// Set asset cooldown
-const setAssetCooldown = (asset: string, vector: Vector): void => {
-  const now = new Date();
-  const cooldownMs = 30000 + Math.random() * 30000; // 30-60 seconds
+// Strategy eligibility matrix - validate strategy can run on this context
+const isStrategyEligible = (
+  strategyId: string, 
+  vector: Vector, 
+  marketType: MarketType,
+  session: Session
+): boolean => {
+  // OTC-only strategies
+  const otcOnlyStrategies = ["candle-exhaust", "time-cycle", "false-breakout", "snap-strategy"];
+  if (otcOnlyStrategies.includes(strategyId) && marketType !== "OTC") {
+    return false;
+  }
   
-  assetStates.set(asset, {
-    asset,
-    vector,
-    lastSignal: now,
-    cooldownUntil: new Date(now.getTime() + cooldownMs),
-    refractoryCount: (assetStates.get(asset)?.refractoryCount || 0) + 1
-  });
+  // Real-market-only strategies
+  const realOnlyStrategies = ["ict-liquidity", "wyckoff", "smc-orderblocks", "liquidity-stop"];
+  if (realOnlyStrategies.includes(strategyId) && marketType === "OTC") {
+    return false;
+  }
+  
+  // Session-based eligibility
+  if (session === "Closed" && marketType === "REAL") {
+    return false;  // No real market strategies when closed
+  }
+  
+  return true;
 };
 
-// Generate a signal for a specific vector
+// Generate a signal for a specific vector (v2 with full validation)
 export const generateSignal = (vector: Vector): Signal | null => {
-  const assets = ASSET_POOLS[vector];
   const session = getCurrentSession();
   const marketType: MarketType = vector === "OTC" ? "OTC" : "REAL";
   
-  // Filter available assets (not on cooldown)
-  const availableAssets = assets.filter(asset => !isAssetOnCooldown(asset));
+  // SESSION-LOCK ENFORCEMENT
+  const scanCheck = canScanInCurrentSession();
+  if (!scanCheck.canScan) {
+    console.log(`[ENGINE] Scan blocked: ${scanCheck.reason}`);
+    return null;
+  }
   
-  if (availableAssets.length === 0) return null;
+  const assets = ASSET_POOLS[vector];
   
-  // Get eligible strategies for this vector
+  // ASSET-LEVEL COOLDOWN CHECK
+  const availableAssets = getAvailableAssets(assets, vector);
+  
+  if (availableAssets.length === 0) {
+    console.log(`[ENGINE] No available assets for ${vector} - all on cooldown`);
+    return null;
+  }
+  
+  // Get eligible strategies with matrix validation
   const eligibleStrategies = STRATEGIES
-    .filter(s => s.vector === vector || (marketType === "OTC" && s.marketType === "OTC"))
+    .filter(s => {
+      const matchesVector = s.vector === vector || (marketType === "OTC" && s.marketType === "OTC");
+      const isEligible = isStrategyEligible(s.id, vector, marketType, session);
+      return matchesVector && isEligible;
+    })
     .sort((a, b) => a.priority - b.priority);
   
-  if (eligibleStrategies.length === 0) return null;
+  if (eligibleStrategies.length === 0) {
+    console.log(`[ENGINE] No eligible strategies for ${vector} in ${session} session`);
+    return null;
+  }
   
   // Probability check based on session
   const sessionWeight = getSessionWeight(session, vector);
@@ -147,13 +207,13 @@ export const generateSignal = (vector: Vector): Signal | null => {
   
   if (Math.random() > probability) return null;
   
-  // Select random asset and strategy
+  // Select random asset and highest priority strategy
   const asset = availableAssets[Math.floor(Math.random() * availableAssets.length)];
-  const strategy = eligibleStrategies[0]; // Use highest priority strategy
+  const strategy = eligibleStrategies[0];
   
   // Generate T+4 timing
   const now = new Date();
-  const executeAt = new Date(now.getTime() + 4 * 60 * 1000); // T+4 minutes
+  const executeAt = new Date(now.getTime() + 4 * 60 * 1000);
   
   const signal: Signal = {
     id: generateId(),
@@ -165,19 +225,45 @@ export const generateSignal = (vector: Vector): Signal | null => {
     issuedAt: now,
     executeAt,
     timeframe: getTimeframe(marketType, vector),
-    confidence: calculateConfidence(session, vector, strategy.priority),
+    confidence: calculateConfidence(session, vector, strategy.priority, marketType),
     status: "PENDING",
     session
   };
   
-  // Set cooldown for this asset
-  setAssetCooldown(asset, vector);
+  // OTC HONESTY VALIDATION
+  if (marketType === "OTC") {
+    const validation = validateOTCSignal(signal);
+    
+    // Generate audit entry
+    const auditEntry = generateOTCAuditEntry(signal);
+    auditLog.push(auditEntry);
+    
+    if (!validation.isValid) {
+      console.log(`[OTC-HONESTY] Signal rejected: ${validation.reason}`);
+      return null;
+    }
+    
+    // Apply adjusted confidence
+    signal.confidence = validation.adjustedConfidence;
+  }
+  
+  // Set cooldown for this asset (COMPLETION reason for new signals)
+  setCooldown(asset, vector, "COMPLETION", signal.id);
+  
+  console.log(`[ENGINE] Signal generated: ${signal.id} - ${asset} ${signal.direction} (${signal.confidence.toFixed(1)}%)`);
   
   return signal;
 };
 
 // Scan all vectors and generate signals
 export const scanAllVectors = (selectedVector?: Vector): Signal[] => {
+  // Check session lock before scanning
+  const scanCheck = canScanInCurrentSession();
+  if (!scanCheck.canScan) {
+    console.log(`[ENGINE] Scan blocked globally: ${scanCheck.reason}`);
+    return [];
+  }
+  
   const signals: Signal[] = [];
   const vectorsToScan = selectedVector ? [selectedVector] : Object.keys(ASSET_POOLS) as Vector[];
   
@@ -191,25 +277,56 @@ export const scanAllVectors = (selectedVector?: Vector): Signal[] => {
   return signals;
 };
 
-// Check and update signal status
+// Check and update signal status (v2 with missed-trade detection)
 export const updateSignalStatus = (signal: Signal): Signal => {
-  const now = new Date();
-  const executeTime = new Date(signal.executeAt);
-  const windowEnd = new Date(executeTime.getTime() + 20 * 1000); // 20 second window
-  
-  if (signal.status === "PENDING") {
-    if (now >= executeTime && now <= windowEnd) {
-      return { ...signal, status: "EXECUTED" };
-    }
-    if (now > windowEnd) {
-      return { ...signal, status: "MISSED" };
-    }
-  }
-  
-  return signal;
+  return updateSignalWithMissedCheck(signal);
 };
 
-// Reset all asset cooldowns
+// Reset all cooldowns and session lock
 export const resetCooldowns = (): void => {
-  assetStates.clear();
+  resetAllCooldowns();
+  clearAcknowledgments();
 };
+
+// Start engine with session lock
+export const startEngineWithSessionLock = (): { success: boolean; session: Session; reason: string } => {
+  const lockState = lockToCurrentSession();
+  
+  if (lockState.lockedSession === "Closed") {
+    return {
+      success: false,
+      session: "Closed",
+      reason: "No active trading session - engine idle"
+    };
+  }
+  
+  return {
+    success: true,
+    session: lockState.lockedSession!,
+    reason: `Engine locked to ${lockState.lockedSession} session`
+  };
+};
+
+// Stop engine and release session lock
+export const stopEngineWithSessionRelease = (): void => {
+  releaseSessionLock();
+  console.log("[ENGINE] Engine stopped, session lock released");
+};
+
+// Acknowledge signal execution (for missed-trade tracking)
+export const acknowledgeSignalExecution = (signalId: string): boolean => {
+  return acknowledgeSignal(signalId);
+};
+
+// Get audit log
+export const getAuditLog = (): OTCAuditEntry[] => {
+  return [...auditLog];
+};
+
+// Clear audit log
+export const clearAuditLog = (): void => {
+  auditLog.length = 0;
+};
+
+// Export session lock state getter
+export { getSessionLockState, canScanInCurrentSession } from "./sessionLock";
