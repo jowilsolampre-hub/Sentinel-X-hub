@@ -38,13 +38,15 @@ interface UseSignalEngineReturn {
   isRunning: boolean;
   sessionLock: SessionLockInfo;
   activeCooldowns: number;
+  pendingAcknowledgment: Signal | null;
   startEngine: () => { success: boolean; reason: string };
   stopEngine: () => void;
   pauseEngine: () => void;
   clearSignals: () => void;
   toggleRiskLock: () => void;
   setSelectedVector: (vector: Vector | undefined) => void;
-  acknowledgeSignal: (signalId: string) => boolean;
+  acknowledgeSignal: (signalId: string) => void;
+  cancelSignal: (signalId: string) => void;
   clearAllHistory: () => void;
 }
 
@@ -59,6 +61,7 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
   const [isRunning, setIsRunning] = useState(false);  // Start stopped (require explicit start)
   const [isPaused, setIsPaused] = useState(false);
   const [activeCooldowns, setActiveCooldowns] = useState(0);
+  const [pendingAcknowledgment, setPendingAcknowledgment] = useState<Signal | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const [sessionLock, setSessionLock] = useState<SessionLockInfo>({
@@ -116,6 +119,12 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
 
   // Engine scan loop
   const runScan = useCallback(() => {
+    // CRITICAL: Don't scan if waiting for acknowledgment
+    if (pendingAcknowledgment) {
+      console.log(`[HOOK] Scan paused: Waiting for signal acknowledgment`);
+      return;
+    }
+    
     if (riskGate.manualLock) return;
     if (riskGate.currentDailyTrades >= riskGate.maxDailyTrades) return;
     if (riskGate.currentConsecutiveLosses >= riskGate.maxConsecutiveLosses) return;
@@ -131,24 +140,35 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     const newSignals = scanAllVectors(selectedVector);
     
     if (newSignals.length > 0) {
-      setSignals(prev => [...newSignals, ...prev].slice(0, maxSignals));
+      // Take only the first signal and set it as pending acknowledgment
+      const topSignal = newSignals[0];
+      setPendingAcknowledgment(topSignal);
+      setSignals(prev => [topSignal, ...prev].slice(0, maxSignals));
       setRiskGate(prev => ({
         ...prev,
-        currentDailyTrades: prev.currentDailyTrades + newSignals.length
+        currentDailyTrades: prev.currentDailyTrades + 1
+      }));
+      
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        totalSignals: prev.totalSignals + 1,
+        activeSession: getCurrentSession(),
+        lastScanTime: new Date(),
+        engineStatus: "AWAITING_ACK"
+      }));
+    } else {
+      // Update stats even if no signals
+      setStats(prev => ({
+        ...prev,
+        activeSession: getCurrentSession(),
+        lastScanTime: new Date()
       }));
     }
-
-    // Update stats
-    setStats(prev => ({
-      ...prev,
-      totalSignals: prev.totalSignals + newSignals.length,
-      activeSession: getCurrentSession(),
-      lastScanTime: new Date()
-    }));
     
     updateCooldownCount();
     updateSessionLockState();
-  }, [selectedVector, maxSignals, riskGate, updateSessionLockState, updateCooldownCount]);
+  }, [selectedVector, maxSignals, riskGate, pendingAcknowledgment, updateSessionLockState, updateCooldownCount]);
 
   // Start engine with session lock
   const startEngine = useCallback(() => {
@@ -207,9 +227,23 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     }));
   }, []);
 
-  // Acknowledge signal (for missed-trade tracking)
-  const acknowledgeSignal = useCallback((signalId: string): boolean => {
-    return acknowledgeSignalExecution(signalId);
+  // Acknowledge signal - marks as executed and resumes scanning
+  const acknowledgeSignal = useCallback((signalId: string): void => {
+    acknowledgeSignalExecution(signalId);
+    setSignals(prev => prev.map(s => 
+      s.id === signalId ? { ...s, status: "EXECUTED" as const } : s
+    ));
+    setPendingAcknowledgment(null);
+    setStats(prev => ({ ...prev, engineStatus: "RUNNING" }));
+    console.log(`[HOOK] Signal ${signalId} acknowledged - resuming scan`);
+  }, []);
+
+  // Cancel signal - removes it and resumes scanning
+  const cancelSignal = useCallback((signalId: string): void => {
+    setSignals(prev => prev.filter(s => s.id !== signalId));
+    setPendingAcknowledgment(null);
+    setStats(prev => ({ ...prev, engineStatus: "RUNNING" }));
+    console.log(`[HOOK] Signal ${signalId} cancelled - resuming scan`);
   }, []);
 
   // Clear all history (signals + performance tracker)
@@ -277,6 +311,7 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     isRunning: isRunning && !isPaused,
     sessionLock,
     activeCooldowns,
+    pendingAcknowledgment,
     startEngine,
     stopEngine,
     pauseEngine,
@@ -284,6 +319,7 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     toggleRiskLock,
     setSelectedVector,
     acknowledgeSignal,
+    cancelSignal,
     clearAllHistory
   };
 };

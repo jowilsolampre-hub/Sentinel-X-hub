@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Signal } from "@/types/trading";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { 
   TrendingUp, 
@@ -11,15 +12,20 @@ import {
   Clock, 
   Target, 
   Zap,
-  AlertTriangle
+  AlertTriangle,
+  Check,
+  X
 } from "lucide-react";
 
 interface SignalCardProps {
   signal: Signal;
   compact?: boolean;
+  isPendingAck?: boolean;
+  onAcknowledge?: (signalId: string) => void;
+  onCancel?: (signalId: string) => void;
 }
 
-export const SignalCard = ({ signal, compact = false }: SignalCardProps) => {
+export const SignalCard = ({ signal, compact = false, isPendingAck = false, onAcknowledge, onCancel }: SignalCardProps) => {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   
   const isBuy = signal.direction === "BUY";
@@ -205,6 +211,27 @@ export const SignalCard = ({ signal, compact = false }: SignalCardProps) => {
           <div className="mt-3 flex items-center gap-2 text-warning bg-warning/10 rounded-lg p-2">
             <AlertTriangle className="w-4 h-4" />
             <span className="text-sm font-medium">Prepare for execution</span>
+          </div>
+        )}
+
+        {/* Acknowledge/Cancel buttons when pending acknowledgment */}
+        {isPendingAck && (
+          <div className="mt-4 flex gap-3">
+            <Button 
+              onClick={() => onAcknowledge?.(signal.id)}
+              className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
+            >
+              <Check className="w-4 h-4 mr-2" />
+              Acknowledge
+            </Button>
+            <Button 
+              onClick={() => onCancel?.(signal.id)}
+              variant="destructive"
+              className="flex-1"
+            >
+              <X className="w-4 h-4 mr-2" />
+              Cancel
+            </Button>
           </div>
         )}
       </div>
