@@ -1,6 +1,7 @@
 // SENTINEL X PRIME - Header Component
 
 import { SessionIndicator } from "./SessionIndicator";
+import { FloatingWindowButton } from "./FloatingWindowButton";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Radio } from "lucide-react";
 
@@ -36,8 +37,11 @@ export const Header = () => {
             </div>
           </div>
 
-          {/* Session Indicator */}
-          <SessionIndicator />
+          {/* Floating Window & Session Controls */}
+          <div className="flex items-center gap-4">
+            <FloatingWindowButton />
+            <SessionIndicator />
+          </div>
         </div>
       </div>
     </header>
