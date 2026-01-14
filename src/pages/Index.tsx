@@ -50,7 +50,8 @@ const Index = () => {
     clearSignals,
     toggleRiskLock,
     setSelectedVector: updateVector,
-    acknowledgeSignal
+    acknowledgeSignal,
+    clearAllHistory
   } = useSignalEngine({ selectedVector });
 
   const handleVectorChange = (vector: Vector | undefined) => {
@@ -116,7 +117,7 @@ const Index = () => {
             />
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button 
               variant="outline" 
               size="sm" 
@@ -124,7 +125,16 @@ const Index = () => {
               className="gap-2"
             >
               <Trash2 className="w-4 h-4" />
-              Clear
+              Clear Feed
+            </Button>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={clearAllHistory}
+              className="gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete History
             </Button>
             <Button 
               variant="outline" 
