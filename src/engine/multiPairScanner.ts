@@ -1,8 +1,9 @@
 // SENTINEL X PRIME - Multi-Pair Scanner (v3)
 // Scans ALL pairs (majors + minors) for OTC and REAL markets
+// Now uses proper pattern recognition instead of random candle generation
 
 import { Vector, MarketType, Signal, Session, Timeframe, Direction } from "@/types/trading";
-import { getOTCCandles, getRealCandles, OTC_PAIRS, REAL_PAIRS, MarketCandle } from "./dataRouter";
+import { getRealCandles, OTC_PAIRS, REAL_PAIRS, MarketCandle } from "./dataRouter";
 import { 
   getGuruStrategies, 
   getActiveSessionOpen, 
@@ -14,6 +15,12 @@ import { getCurrentSelection } from "./marketSelector";
 import { detectActiveSession } from "./sessionLock";
 import { isAssetOnCooldown } from "./assetCooldown";
 import { validateOTCSignal, adjustOTCConfidence } from "./otcHonestyLayer";
+import { 
+  analyzeOTCPattern, 
+  getOptimalOTCPairs, 
+  getOTCSignalQuality,
+  updateMarketState 
+} from "./otcPatternEngine";
 
 // Scanner configuration
 const SCAN_SPEED_MS = 600; // 0.6 seconds per asset
@@ -21,6 +28,9 @@ const BASE_PASS_RATE = 0.35; // 35% base
 const SESSION_OPEN_PASS_RATE = 0.65; // 65% during session opens
 const ACTIVE_SESSION_PASS_RATE = 0.50; // 50% during active sessions
 const REFRACTORY_PERIOD_MS = 35000; // 30-40 seconds average
+
+// OTC Signal quality threshold - only emit signals meeting this quality
+const OTC_QUALITY_THRESHOLD = 0.55;
 
 // Generate unique ID
 const generateId = (): string => {
@@ -205,12 +215,19 @@ const analyzeRealPair = (
   return { direction, confidence: Math.min(baseConfidence, 99.9) };
 };
 
-// Scan OTC pairs
+// Scan OTC pairs using pattern recognition engine
 export const scanOTCPairs = (pairs: string[] = OTC_PAIRS): Signal[] => {
   const signals: Signal[] = [];
   const session = detectActiveSession();
   const sessionOpen = getActiveSessionOpen();
   const strategies = getGuruStrategies("OTC");
+  
+  // Get optimal pairs for current time (prioritize these)
+  const optimalPairs = getOptimalOTCPairs();
+  const prioritizedPairs = [
+    ...optimalPairs,
+    ...pairs.filter(p => !optimalPairs.includes(p))
+  ];
   
   // Determine pass rate
   let passRate = BASE_PASS_RATE;
@@ -219,21 +236,30 @@ export const scanOTCPairs = (pairs: string[] = OTC_PAIRS): Signal[] => {
     console.log(`[SCANNER] 🔥 Session open detected - boosted pass rate: ${passRate * 100}%`);
   }
   
-  for (const pair of pairs) {
+  for (const pair of prioritizedPairs) {
     // Check cooldown
     if (isAssetOnCooldown(pair, "OTC")) {
       continue;
     }
     
-    // Probability gate
-    if (Math.random() > passRate) continue;
+    // Get signal quality for this pair
+    const signalQuality = getOTCSignalQuality(pair);
     
-    const candles = getOTCCandles(pair);
-    const strategy = strategies[0]; // Top guru strategy
+    // Skip low quality signals
+    if (signalQuality < OTC_QUALITY_THRESHOLD) {
+      console.log(`[SCANNER] ⚠️ ${pair} quality ${(signalQuality * 100).toFixed(0)}% below threshold`);
+      continue;
+    }
     
-    const { direction, confidence } = analyzeOTCPair(pair, candles, strategy);
+    // Probability gate (adjusted by quality)
+    const adjustedPassRate = passRate * (0.7 + signalQuality * 0.6);
+    if (Math.random() > adjustedPassRate) continue;
     
-    if (direction) {
+    // Use pattern recognition instead of random candle analysis
+    const patternResult = analyzeOTCPattern(pair);
+    
+    if (patternResult && patternResult.strength !== "WEAK") {
+      const strategy = strategies[0]; // Top guru strategy
       const now = new Date();
       const executeAt = new Date(now.getTime() + 4 * 60 * 1000); // T+4
       
@@ -242,12 +268,12 @@ export const scanOTCPairs = (pairs: string[] = OTC_PAIRS): Signal[] => {
         asset: pair,
         vector: "OTC",
         marketType: "OTC",
-        strategy: strategy.name,
-        direction,
+        strategy: `${strategy.name} (${patternResult.pattern})`,
+        direction: patternResult.direction,
         issuedAt: now,
         executeAt,
-        timeframe: Math.random() > 0.5 ? "1M" : "5M",
-        confidence,
+        timeframe: patternResult.timeframe,
+        confidence: patternResult.confidence,
         status: "PENDING",
         session
       };
@@ -256,7 +282,11 @@ export const scanOTCPairs = (pairs: string[] = OTC_PAIRS): Signal[] => {
       const validation = validateOTCSignal(signal);
       if (validation.isValid) {
         signal.confidence = validation.adjustedConfidence;
+        console.log(`[SCANNER] ✅ OTC Signal: ${pair} ${patternResult.direction} @ ${signal.confidence.toFixed(1)}% | Pattern: ${patternResult.pattern} | Reason: ${patternResult.reasoning}`);
         signals.push(signal);
+        
+        // Update market state for future pattern detection
+        updateMarketState(pair, patternResult.direction, true);
       }
     }
   }

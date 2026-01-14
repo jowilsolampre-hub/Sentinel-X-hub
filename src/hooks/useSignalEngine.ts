@@ -1,5 +1,5 @@
 // SENTINEL X PRIME - Signal Engine Hook (v2 PATCHED)
-// Includes: Session-lock, Asset cooldowns, Missed-trade invalidation, OTC honesty
+// Includes: Session-lock, Asset cooldowns, Missed-trade invalidation, OTC honesty, Notifications
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Signal, Vector, EngineStats, RiskGate, Session } from "@/types/trading";
@@ -16,6 +16,28 @@ import {
 } from "@/engine/signalEngine";
 import { getAllCooldowns } from "@/engine/assetCooldown";
 import { clearHistory as clearPerformanceHistory } from "@/engine/performanceTracker";
+
+// Desktop notification helper
+const sendDesktopNotification = (signal: Signal) => {
+  if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+    const notification = new Notification(`🚀 ${signal.direction} Signal: ${signal.asset}`, {
+      body: `Confidence: ${signal.confidence.toFixed(1)}% | Strategy: ${signal.strategy}\nExecute at: ${signal.executeAt.toLocaleTimeString()}`,
+      icon: "/favicon.ico",
+      badge: "/favicon.ico",
+      tag: `signal-${signal.id}`,
+      requireInteraction: true,
+      silent: false
+    });
+
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+
+    // Auto-close after 60 seconds
+    setTimeout(() => notification.close(), 60000);
+  }
+};
 
 interface SessionLockInfo {
   isLocked: boolean;
@@ -148,6 +170,9 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
         ...prev,
         currentDailyTrades: prev.currentDailyTrades + 1
       }));
+      
+      // Send desktop notification for new signal
+      sendDesktopNotification(topSignal);
       
       // Update stats
       setStats(prev => ({
