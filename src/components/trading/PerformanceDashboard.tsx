@@ -1,7 +1,9 @@
 // SENTINEL X PRIME - Performance Dashboard (v3)
 
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import {
@@ -12,13 +14,16 @@ import {
   Zap,
   Award,
   Clock,
-  Activity
+  Activity,
+  Trash2,
+  RefreshCw
 } from "lucide-react";
 import {
   getPerformanceStats,
   getSessionStats,
   getStrategyStats,
   formatWinRate,
+  clearHistory,
   PerformanceStats,
   SessionStats,
   StrategyStats
@@ -26,20 +31,55 @@ import {
 
 interface PerformanceDashboardProps {
   className?: string;
+  onClearHistory?: () => void;
 }
 
-export const PerformanceDashboard = ({ className }: PerformanceDashboardProps) => {
+export const PerformanceDashboard = ({ className, onClearHistory }: PerformanceDashboardProps) => {
+  const [refreshKey, setRefreshKey] = useState(0);
+  
   const stats = getPerformanceStats();
   const sessionStats = getSessionStats();
   const strategyStats = getStrategyStats();
+
+  const handleClearHistory = () => {
+    clearHistory();
+    setRefreshKey(prev => prev + 1);
+    onClearHistory?.();
+  };
+
+  const handleRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+  };
 
   return (
     <div className={cn("space-y-4", className)}>
       {/* Overview Stats */}
       <Card className="p-4 border border-border/50 gradient-card">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="w-5 h-5 text-primary" />
-          <h3 className="font-bold">Performance Overview</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-primary" />
+            <h3 className="font-bold">Performance Overview</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={handleRefresh}
+              className="gap-1 h-8"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Refresh
+            </Button>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={handleClearHistory}
+              className="gap-1 h-8"
+            >
+              <Trash2 className="w-3 h-3" />
+              Clear History
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

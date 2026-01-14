@@ -15,6 +15,7 @@ import {
   canScanInCurrentSession
 } from "@/engine/signalEngine";
 import { getAllCooldowns } from "@/engine/assetCooldown";
+import { clearHistory as clearPerformanceHistory } from "@/engine/performanceTracker";
 
 interface SessionLockInfo {
   isLocked: boolean;
@@ -44,6 +45,7 @@ interface UseSignalEngineReturn {
   toggleRiskLock: () => void;
   setSelectedVector: (vector: Vector | undefined) => void;
   acknowledgeSignal: (signalId: string) => boolean;
+  clearAllHistory: () => void;
 }
 
 export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignalEngineReturn => {
@@ -210,6 +212,27 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     return acknowledgeSignalExecution(signalId);
   }, []);
 
+  // Clear all history (signals + performance tracker)
+  const clearAllHistory = useCallback(() => {
+    setSignals([]);
+    resetCooldowns();
+    clearPerformanceHistory();
+    setRiskGate(prev => ({
+      ...prev,
+      currentDailyTrades: 0,
+      currentConsecutiveLosses: 0,
+      currentDailyLoss: 0
+    }));
+    setStats(prev => ({
+      ...prev,
+      totalSignals: 0,
+      pendingSignals: 0,
+      executedSignals: 0,
+      winRate: 0
+    }));
+    updateCooldownCount();
+  }, [updateCooldownCount]);
+
   // Main effect for engine loop
   useEffect(() => {
     if (isRunning && !isPaused) {
@@ -260,6 +283,7 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     clearSignals,
     toggleRiskLock,
     setSelectedVector,
-    acknowledgeSignal
+    acknowledgeSignal,
+    clearAllHistory
   };
 };
