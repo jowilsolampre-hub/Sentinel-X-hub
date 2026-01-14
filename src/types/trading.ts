@@ -46,7 +46,7 @@ export interface EngineStats {
   executedSignals: number;
   winRate: number;
   activeSession: Session;
-  engineStatus: "RUNNING" | "PAUSED" | "STOPPED";
+  engineStatus: "RUNNING" | "PAUSED" | "STOPPED" | "AWAITING_ACK";
   lastScanTime: Date;
 }
 

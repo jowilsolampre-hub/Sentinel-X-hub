@@ -44,14 +44,19 @@ export const EngineStatus = ({
         <div className="flex items-center gap-4">
           <div className={cn(
             "relative p-3 rounded-lg",
+            stats.engineStatus === "AWAITING_ACK" ? "bg-warning/20" :
             isRunning ? "bg-success/20" : "bg-muted"
           )}>
             <Activity className={cn(
               "w-6 h-6",
+              stats.engineStatus === "AWAITING_ACK" ? "text-warning animate-pulse" :
               isRunning ? "text-success animate-pulse" : "text-muted-foreground"
             )} />
-            {isRunning && (
+            {isRunning && stats.engineStatus !== "AWAITING_ACK" && (
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-success rounded-full animate-ping" />
+            )}
+            {stats.engineStatus === "AWAITING_ACK" && (
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-warning rounded-full animate-pulse" />
             )}
           </div>
           
@@ -61,14 +66,18 @@ export const EngineStatus = ({
               <Badge 
                 variant={isRunning ? "default" : "secondary"}
                 className={cn(
-                  isRunning && "bg-success text-success-foreground"
+                  stats.engineStatus === "AWAITING_ACK" && "bg-warning text-warning-foreground",
+                  stats.engineStatus === "RUNNING" && "bg-success text-success-foreground"
                 )}
               >
-                {stats.engineStatus}
+                {stats.engineStatus === "AWAITING_ACK" ? "AWAITING ACK" : stats.engineStatus}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
               Session: <span className="text-foreground font-medium">{stats.activeSession}</span>
+              {stats.engineStatus === "AWAITING_ACK" && (
+                <span className="ml-2 text-warning font-medium">• Acknowledge signal to continue</span>
+              )}
             </p>
           </div>
         </div>

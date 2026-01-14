@@ -44,6 +44,7 @@ const Index = () => {
     isRunning,
     sessionLock,
     activeCooldowns,
+    pendingAcknowledgment,
     startEngine,
     stopEngine,
     pauseEngine,
@@ -51,6 +52,7 @@ const Index = () => {
     toggleRiskLock,
     setSelectedVector: updateVector,
     acknowledgeSignal,
+    cancelSignal,
     clearAllHistory
   } = useSignalEngine({ selectedVector });
 
@@ -192,7 +194,12 @@ const Index = () => {
                 
                 {/* Signal Feed */}
                 <Card className="p-4 border border-border/50 gradient-card">
-                  <SignalFeed signals={signals} />
+                  <SignalFeed 
+                    signals={signals} 
+                    pendingAcknowledgment={pendingAcknowledgment}
+                    onAcknowledge={acknowledgeSignal}
+                    onCancel={cancelSignal}
+                  />
                 </Card>
               </div>
 

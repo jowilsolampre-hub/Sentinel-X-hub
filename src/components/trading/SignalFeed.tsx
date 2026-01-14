@@ -10,9 +10,12 @@ import { useState } from "react";
 
 interface SignalFeedProps {
   signals: Signal[];
+  pendingAcknowledgment?: Signal | null;
+  onAcknowledge?: (signalId: string) => void;
+  onCancel?: (signalId: string) => void;
 }
 
-export const SignalFeed = ({ signals }: SignalFeedProps) => {
+export const SignalFeed = ({ signals, pendingAcknowledgment, onAcknowledge, onCancel }: SignalFeedProps) => {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   if (signals.length === 0) {
@@ -32,7 +35,12 @@ export const SignalFeed = ({ signals }: SignalFeedProps) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Signal Feed ({signals.length})</h3>
+        <h3 className="font-semibold">
+          Signal Feed ({signals.length})
+          {pendingAcknowledgment && (
+            <span className="ml-2 text-warning text-sm animate-pulse">• Awaiting Acknowledgment</span>
+          )}
+        </h3>
         <div className="flex items-center gap-1">
           <Button
             variant={viewMode === "list" ? "default" : "ghost"}
@@ -64,6 +72,9 @@ export const SignalFeed = ({ signals }: SignalFeedProps) => {
               key={signal.id} 
               signal={signal} 
               compact={viewMode === "list"}
+              isPendingAck={pendingAcknowledgment?.id === signal.id}
+              onAcknowledge={onAcknowledge}
+              onCancel={onCancel}
             />
           ))}
         </div>
