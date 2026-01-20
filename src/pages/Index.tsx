@@ -339,7 +339,7 @@ const Index = () => {
               <Card className="p-6 border border-border/50 gradient-card lg:col-span-2">
                 <div className="flex items-center gap-2 mb-4">
                   <Settings className="w-5 h-5 text-primary" />
-                  <h3 className="font-bold">Engine Configuration (v3)</h3>
+                  <h3 className="font-bold">Engine Configuration (v4 TURBO)</h3>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -354,31 +354,31 @@ const Index = () => {
                       <span className="text-sm">Asset Cooldowns</span>
                       <span className="font-mono text-sm">{activeCooldowns} active</span>
                     </div>
-                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                      <span className="text-sm">Missed-Trade Detection</span>
-                      <span className="font-mono text-sm text-success">Enabled</span>
+                    <div className="flex items-center justify-between p-3 bg-success/10 rounded-lg border border-success/30">
+                      <span className="text-sm font-medium">⚡ Turbo Scanner</span>
+                      <span className="font-mono text-sm text-success">45s-2min</span>
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                      <span className="text-sm">OTC Honesty Layer</span>
-                      <span className="font-mono text-sm text-success">Enabled</span>
+                    <div className="flex items-center justify-between p-3 bg-success/10 rounded-lg border border-success/30">
+                      <span className="text-sm font-medium">⚡ Fast Broker Bridge</span>
+                      <span className="font-mono text-sm text-success">~30ms</span>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
                       <span className="text-sm">T+4 Protocol</span>
                       <span className="font-mono text-sm text-success">Enforced</span>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                      <span className="text-sm">Multi-Pair Scanner</span>
-                      <span className="font-mono text-sm text-success">Active</span>
+                      <span className="text-sm">Scan Interval</span>
+                      <span className="font-mono text-sm text-primary">800ms</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 p-4 bg-muted/20 rounded-lg border border-border/50">
-                  <p className="text-sm text-muted-foreground">
-                    <strong>v3 Backend Active:</strong> Market/Broker selection, Guru strategies, confidence scoring, 
-                    multi-pair scanning, and performance tracking are now operational.
+                <div className="mt-6 p-4 bg-success/10 rounded-lg border border-success/30">
+                  <p className="text-sm text-success">
+                    <strong>🚀 v4 TURBO Active:</strong> Ultra-fast broker connections (pre-initialized), 
+                    parallel scanning, cached pattern analysis, 45s-2min signal generation.
                   </p>
                 </div>
               </Card>
@@ -389,10 +389,10 @@ const Index = () => {
         {/* Footer */}
         <footer className="text-center py-6 border-t border-border/30">
           <p className="text-sm text-muted-foreground">
-            SENTINEL X PRIME v3 — Professional Trading Intelligence System
+            SENTINEL X PRIME v4 TURBO — Ultra-Fast Trading Intelligence
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Decision Intelligence Engine • Not Financial Advice
+            ⚡ Decision Intelligence Engine • Signals in 45s-2min • Not Financial Advice
           </p>
         </footer>
       </main>

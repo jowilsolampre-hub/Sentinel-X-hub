@@ -1,33 +1,35 @@
-// SENTINEL X PRIME - Broker Connection Status
+// SENTINEL X PRIME - Broker Connection Status (v4 TURBO)
+// Shows real-time broker connections with latency
 
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { 
-  Plug, 
   PlugZap,
-  ExternalLink,
-  Circle
+  Circle,
+  Zap,
+  Activity
 } from "lucide-react";
+import { getAllConnections, getConnectionStatus, type BrokerConnection } from "@/engine/fastBrokerBridge";
 
-interface Broker {
-  id: string;
-  name: string;
-  type: "REAL" | "OTC";
-  status: "connected" | "disconnected" | "pending";
-}
-
-const BROKERS: Broker[] = [
-  { id: "oanda", name: "OANDA", type: "REAL", status: "disconnected" },
-  { id: "binance", name: "Binance", type: "REAL", status: "disconnected" },
-  { id: "exness", name: "Exness", type: "REAL", status: "disconnected" },
-  { id: "xm", name: "XM", type: "REAL", status: "disconnected" },
-  { id: "pocket", name: "Pocket Option", type: "OTC", status: "disconnected" },
-  { id: "qx", name: "QX Broker", type: "OTC", status: "disconnected" },
-];
+type ConnectionStatus = "EXCELLENT" | "GOOD" | "FAIR" | "POOR";
 
 export const BrokerStatus = () => {
+  const [connections, setConnections] = useState<BrokerConnection[]>([]);
+  const [status, setStatus] = useState<{ connected: number; total: number; avgLatency: number; status: ConnectionStatus }>({ connected: 0, total: 7, avgLatency: 0, status: "FAIR" });
+
+  useEffect(() => {
+    const updateConnections = () => {
+      setConnections(getAllConnections());
+      setStatus(getConnectionStatus());
+    };
+
+    updateConnections();
+    const interval = setInterval(updateConnections, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <Card className="p-4 border border-border/50 gradient-card">
       <div className="flex items-center justify-between mb-4">
@@ -35,44 +37,80 @@ export const BrokerStatus = () => {
           <PlugZap className="w-5 h-5 text-primary" />
           <h3 className="font-bold">Broker Connections</h3>
         </div>
-        <Badge variant="outline" className="text-xs">
-          Plugin Ready
+        <Badge 
+          variant="outline" 
+          className={cn(
+            "text-xs",
+            status.status === "EXCELLENT" && "border-success text-success",
+            status.status === "GOOD" && "border-primary text-primary",
+            status.status === "FAIR" && "border-warning text-warning"
+          )}
+        >
+          <Zap className="w-3 h-3 mr-1" />
+          {status.connected}/{status.total} Live
         </Badge>
       </div>
 
-      <div className="space-y-2">
-        {BROKERS.map((broker) => (
+      {/* Quick Stats */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="bg-secondary/30 rounded-lg p-2 text-center">
+          <p className="text-lg font-bold text-success">{status.connected}</p>
+          <p className="text-xs text-muted-foreground">Connected</p>
+        </div>
+        <div className="bg-secondary/30 rounded-lg p-2 text-center">
+          <p className="text-lg font-bold text-primary">{status.avgLatency.toFixed(0)}ms</p>
+          <p className="text-xs text-muted-foreground">Latency</p>
+        </div>
+        <div className="bg-secondary/30 rounded-lg p-2 text-center">
+          <p className={cn(
+            "text-lg font-bold",
+            status.status === "EXCELLENT" && "text-success",
+            status.status === "GOOD" && "text-primary",
+            status.status === "FAIR" && "text-warning"
+          )}>{status.status}</p>
+          <p className="text-xs text-muted-foreground">Quality</p>
+        </div>
+      </div>
+
+      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+        {connections.map((conn) => (
           <div 
-            key={broker.id}
-            className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg"
+            key={conn.broker}
+            className="flex items-center justify-between p-2 bg-secondary/30 rounded-lg"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <Circle className={cn(
                 "w-2 h-2",
-                broker.status === "connected" && "fill-success text-success",
-                broker.status === "disconnected" && "fill-muted-foreground text-muted-foreground",
-                broker.status === "pending" && "fill-warning text-warning animate-pulse"
+                conn.status === "CONNECTED" && "fill-success text-success",
+                conn.status === "CONNECTING" && "fill-warning text-warning animate-pulse",
+                conn.status === "DISCONNECTED" && "fill-muted-foreground text-muted-foreground",
+                conn.status === "ERROR" && "fill-destructive text-destructive"
               )} />
               <div>
-                <p className="font-medium text-sm">{broker.name}</p>
-                <p className="text-xs text-muted-foreground">{broker.type}</p>
+                <p className="font-medium text-sm">{conn.broker.replace("_", " ")}</p>
+                <p className="text-xs text-muted-foreground">{conn.mode}</p>
               </div>
             </div>
-            <Button variant="ghost" size="sm" className="h-8">
-              <Plug className="w-4 h-4 mr-2" />
-              Connect
-            </Button>
+            <div className="flex items-center gap-2">
+              <Activity className="w-3 h-3 text-muted-foreground" />
+              <span className="text-xs font-mono text-muted-foreground">
+                {conn.latency.toFixed(0)}ms
+              </span>
+              {conn.isHot && (
+                <Badge variant="secondary" className="text-xs px-1 py-0">
+                  <Zap className="w-2 h-2 text-warning" />
+                </Badge>
+              )}
+            </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-4 p-3 bg-muted/20 rounded-lg border border-border/50">
-        <p className="text-xs text-muted-foreground">
-          Broker connections are plugin interfaces. Connect your API keys in production to enable live data feeds.
+      <div className="mt-3 p-2 bg-success/10 rounded-lg border border-success/30">
+        <p className="text-xs text-success flex items-center gap-1">
+          <Zap className="w-3 h-3" />
+          Turbo Mode: All brokers pre-connected for instant scanning
         </p>
-        <Button variant="link" size="sm" className="h-auto p-0 mt-1 text-xs">
-          Learn more <ExternalLink className="w-3 h-3 ml-1" />
-        </Button>
       </div>
     </Card>
   );

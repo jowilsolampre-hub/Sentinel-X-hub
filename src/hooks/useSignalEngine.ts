@@ -1,10 +1,10 @@
-// SENTINEL X PRIME - Signal Engine Hook (v2 PATCHED)
-// Includes: Session-lock, Asset cooldowns, Missed-trade invalidation, OTC honesty, Notifications
+// SENTINEL X PRIME - Signal Engine Hook (v4 TURBO)
+// Ultra-fast scanning: 45 seconds to 2 minutes max
+// Includes: Fast broker bridge, Turbo scanner, Notifications
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Signal, Vector, EngineStats, RiskGate, Session } from "@/types/trading";
 import { 
-  scanAllVectors, 
   getCurrentSession, 
   updateSignalStatus, 
   resetCooldowns,
@@ -14,6 +14,8 @@ import {
   getSessionLockState,
   canScanInCurrentSession
 } from "@/engine/signalEngine";
+import { turboScan, getTurboSessionInfo } from "@/engine/turboScanner";
+import { initializeAllBrokers, getConnectionStatus } from "@/engine/fastBrokerBridge";
 import { getAllCooldowns } from "@/engine/assetCooldown";
 import { clearHistory as clearPerformanceHistory } from "@/engine/performanceTracker";
 
@@ -74,7 +76,7 @@ interface UseSignalEngineReturn {
 
 export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignalEngineReturn => {
   const { 
-    scanInterval = 2000, 
+    scanInterval = 800, // TURBO: 800ms scan interval (was 2000ms)
     maxSignals = 50 
   } = options;
 
@@ -159,7 +161,8 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
       return;
     }
 
-    const newSignals = scanAllVectors(selectedVector);
+    // TURBO SCAN - Ultra fast
+    const newSignals = turboScan(selectedVector);
     
     if (newSignals.length > 0) {
       // Take only the first signal and set it as pending acknowledgment
@@ -195,14 +198,18 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     updateSessionLockState();
   }, [selectedVector, maxSignals, riskGate, pendingAcknowledgment, updateSessionLockState, updateCooldownCount]);
 
-  // Start engine with session lock
+  // Start engine with session lock + fast broker init
   const startEngine = useCallback(() => {
+    // Initialize brokers instantly
+    initializeAllBrokers();
+    
     const result = startEngineWithSessionLock();
     
     if (result.success) {
       setIsRunning(true);
       setIsPaused(false);
       setStats(prev => ({ ...prev, engineStatus: "RUNNING" }));
+      console.log("[TURBO] ⚡ Engine started with fast broker connections");
     }
     
     updateSessionLockState();
