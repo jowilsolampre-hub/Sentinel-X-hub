@@ -23,7 +23,7 @@ export const Header = () => {
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
-                SENTINEL X <span className="text-primary">PRIME</span>
+                SENTINEL <span className="text-primary">X</span>
               </h1>
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="text-xs">

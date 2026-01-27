@@ -389,7 +389,7 @@ const Index = () => {
         {/* Footer */}
         <footer className="text-center py-6 border-t border-border/30">
           <p className="text-sm text-muted-foreground">
-            SENTINEL X PRIME v4 TURBO — Ultra-Fast Trading Intelligence
+            SENTINEL X v4 TURBO — Ultra-Fast Trading Intelligence
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             ⚡ Decision Intelligence Engine • Signals in 45s-2min • Not Financial Advice
