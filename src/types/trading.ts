@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Trading Types
+// SENTINEL X - Trading Types (v5)
 
 export type Vector = "Forex" | "Indices" | "Commodities" | "Futures" | "OTC";
 export type MarketType = "REAL" | "OTC";

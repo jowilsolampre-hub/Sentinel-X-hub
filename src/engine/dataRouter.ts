@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Data Routing Layer (v3)
+// SENTINEL X - Data Routing Layer (v5)
 // Routes OTC vs REAL feeds independently without cross-contamination
 
 import { Vector, MarketType } from "@/types/trading";

@@ -1,5 +1,5 @@
-// SENTINEL X PRIME - Session Lock Enforcement
-// When engine starts, it locks to the currently active session and does NOT scan outside it
+// SENTINEL X - Session Lock Enforcement (v5)
+// When engine starts, it locks to the currently active session
 
 import { Session, SESSION_TIMES } from "@/types/trading";
 

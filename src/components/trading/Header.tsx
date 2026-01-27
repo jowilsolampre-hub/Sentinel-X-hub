@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Header Component
+// SENTINEL X - Header Component
 
 import { SessionIndicator } from "./SessionIndicator";
 import { FloatingWindowButton } from "./FloatingWindowButton";

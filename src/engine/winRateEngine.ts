@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Win Rate Tracking Engine (v3)
+// SENTINEL X - Win Rate Tracking Engine (v5)
 // Pair-specific performance tracking, auto-filtering, and analytics
 
 import { Vector, MarketType, Session, Direction, Timeframe } from "@/types/trading";
@@ -395,7 +395,7 @@ export const exportStatsForTelegram = (): string => {
   const martingale = getMartingaleStats();
   
   return `
-📊 SENTINEL X PRIME STATS
+📊 SENTINEL X STATS
 
 ✅ Win Rate: ${overall.winRate.toFixed(1)}%
 📈 Total Trades: ${overall.totalTrades}

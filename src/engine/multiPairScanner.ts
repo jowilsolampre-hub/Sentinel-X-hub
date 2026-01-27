@@ -1,6 +1,6 @@
-// SENTINEL X PRIME - Multi-Pair Scanner (v3)
+// SENTINEL X - Multi-Pair Scanner (v5)
 // Scans ALL pairs (majors + minors) for OTC and REAL markets
-// Now uses proper pattern recognition instead of random candle generation
+// Uses pattern recognition with cross-market validation
 
 import { Vector, MarketType, Signal, Session, Timeframe, Direction } from "@/types/trading";
 import { getRealCandles, OTC_PAIRS, REAL_PAIRS, MarketCandle } from "./dataRouter";

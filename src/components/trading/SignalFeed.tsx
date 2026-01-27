@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Signal Feed Component
+// SENTINEL X - Signal Feed Component (v5)
 
 import { Signal } from "@/types/trading";
 import { SignalCard } from "./SignalCard";

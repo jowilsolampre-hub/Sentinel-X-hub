@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Market & Broker Selection Panel (v3)
+// SENTINEL X - Market & Broker Selection Panel (v5)
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";

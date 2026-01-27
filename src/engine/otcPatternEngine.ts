@@ -1,5 +1,5 @@
-// SENTINEL X PRIME - OTC Pattern Recognition Engine
-// Real pattern analysis for OTC signals instead of random generation
+// SENTINEL X - OTC Pattern Recognition Engine (v5)
+// Real pattern analysis for OTC signals
 
 import { Vector, MarketType, Signal, Session, Timeframe, Direction } from "@/types/trading";
 import { detectActiveSession } from "./sessionLock";

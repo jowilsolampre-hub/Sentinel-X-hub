@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Confidence Scoring Engine (v3)
+// SENTINEL X - Confidence Scoring Engine (v5)
 // Professional-grade signal confidence calculation
 
 import { Signal, Session, Vector, MarketType } from "@/types/trading";

@@ -1,5 +1,5 @@
-// SENTINEL X PRIME - Broker Connection Status (v4 TURBO)
-// Shows real-time broker connections with latency
+// SENTINEL X - Broker Connection Status (v5 TURBO)
+// PO, QX, OANDA, Binance, Exness, MT5, XM Trader
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";

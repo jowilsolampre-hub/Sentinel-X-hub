@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Turbo Scanner (v4)
+// SENTINEL X - Turbo Scanner (v5)
 // Ultra-fast signal scanning: 45 seconds to 2 minutes max
 // Parallel processing, cached analysis, optimized algorithms
 

@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Session Indicator Component
+// SENTINEL X - Session Indicator Component
 
 import { useEffect, useState } from "react";
 import { Session, SESSION_TIMES } from "@/types/trading";

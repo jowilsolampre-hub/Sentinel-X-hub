@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Candle Clock (Broker-Aligned Timing)
+// SENTINEL X - Candle Clock (Broker-Aligned Timing)
 // Ensures signals are issued and executed at exact candle boundaries
 // ±2 second tolerance for professional-grade accuracy
 

@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Asset-Level Cooldown Manager
+// SENTINEL X - Asset-Level Cooldown Manager (v5)
 // Each asset has independent cooldown after completion, invalidation, or loss
 
 import { Vector } from "@/types/trading";

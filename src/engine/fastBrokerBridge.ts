@@ -1,5 +1,5 @@
-// SENTINEL X PRIME - Fast Broker Bridge (v4 TURBO)
-// Ultra-fast connections with parallel initialization and caching
+// SENTINEL X - Fast Broker Bridge (v5 TURBO)
+// Ultra-fast connections: PO, QX, OANDA, Binance, Exness, MT5, XM
 // Target: Connect in <500ms, scan in 45s-2min
 
 import { Vector, MarketType, Session, Timeframe } from "@/types/trading";

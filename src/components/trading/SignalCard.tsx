@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Signal Card Component
+// SENTINEL X - Signal Card Component (v5)
 
 import { useEffect, useState } from "react";
 import { Signal } from "@/types/trading";

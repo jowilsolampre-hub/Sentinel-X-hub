@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Engine Status Component
+// SENTINEL X - Engine Status Component
 
 import { EngineStats, RiskGate } from "@/types/trading";
 import { Card } from "@/components/ui/card";

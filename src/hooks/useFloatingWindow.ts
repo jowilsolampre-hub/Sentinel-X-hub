@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Floating Window / Popup Overlay Hook
+// SENTINEL X - Floating Window / Popup Overlay Hook
 // Enables app to run as floating overlay on top of other windows
 
 import { useState, useCallback, useEffect } from "react";
@@ -46,7 +46,7 @@ export const useFloatingWindow = () => {
       // Open popup window
       const popup = window.open(
         window.location.href + "?popup=true",
-        "SentinelXPrime_Signals",
+        "SentinelX_Signals",
         `${POPUP_CONFIG.features},width=${POPUP_CONFIG.width},height=${POPUP_CONFIG.height},left=${left},top=${top}`
       );
 
