@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Missed Trade Invalidation Logic
+// SENTINEL X - Missed Trade Invalidation Logic (v5)
 // If execution window expires without acknowledgment, signal becomes MISSED
 
 import { Signal, SignalStatus } from "@/types/trading";

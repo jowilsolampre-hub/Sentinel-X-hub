@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Guru Strategy Prioritization (v3)
+// SENTINEL X - Guru Strategy Prioritization (v5)
 // Ranked strategies by win rate with session-specific matching
 
 import { Vector, MarketType, Session } from "@/types/trading";

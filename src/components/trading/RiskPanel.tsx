@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Risk Management Panel
+// SENTINEL X - Risk Management Panel
 
 import { RiskGate } from "@/types/trading";
 import { Card } from "@/components/ui/card";

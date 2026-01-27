@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Market & Broker Selection Controller (v3)
+// SENTINEL X - Market & Broker Selection Controller (v5)
 // Persistent state for OTC vs REAL market routing with broker selection
 
 import { MarketType, Vector } from "@/types/trading";

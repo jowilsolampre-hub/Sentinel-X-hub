@@ -1,5 +1,5 @@
-// SENTINEL X PRIME - Broker Bridge (v3)
-// Connects to multiple brokers: Pocket Option, Quotex, OANDA, Binance, Exness, MT5, XM
+// SENTINEL X - Broker Bridge (v5)
+// Connects: Pocket Option, Quotex, OANDA, Binance, Exness, MT5, XM Trader
 // Provides unified interface for market data and signal execution
 
 import { Vector, MarketType, Session, Timeframe } from "@/types/trading";

@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Vector Selector Component
+// SENTINEL X - Vector Selector Component
 
 import { Vector } from "@/types/trading";
 import { Button } from "@/components/ui/button";

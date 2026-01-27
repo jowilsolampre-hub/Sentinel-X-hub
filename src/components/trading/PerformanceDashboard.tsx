@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Performance Dashboard (v3)
+// SENTINEL X - Performance Dashboard (v5)
 
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";

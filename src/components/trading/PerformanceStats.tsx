@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Performance Statistics Component
+// SENTINEL X - Performance Statistics Component
 
 import { Signal } from "@/types/trading";
 import { Card } from "@/components/ui/card";

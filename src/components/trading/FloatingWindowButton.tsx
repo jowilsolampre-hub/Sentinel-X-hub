@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Floating Window Control Button
+// SENTINEL X - Floating Window Control Button
 // Opens app as floating overlay window on top of other apps
 
 import { Button } from "@/components/ui/button";
@@ -61,7 +61,7 @@ export const FloatingWindowButton = () => {
       });
       // Test notification
       sendNotification(
-        "SENTINEL X PRIME",
+        "SENTINEL X",
         "Notifications are now active! You'll be alerted when signals are generated."
       );
     } else {

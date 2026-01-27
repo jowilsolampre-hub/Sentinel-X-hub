@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Strategy Information Panel
+// SENTINEL X - Strategy Information Panel
 
 import { STRATEGIES, MarketType } from "@/types/trading";
 import { Card } from "@/components/ui/card";

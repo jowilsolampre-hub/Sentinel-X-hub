@@ -1,6 +1,6 @@
-// SENTINEL X PRIME - Real Market Feed (v3)
+// SENTINEL X - Real Market Feed (v5)
 // Legal volatility-matched feeds for OTC + Real market data
-// Sources: Yahoo Finance (FX), Mirror Feeds (OTC), Synthetic Volatility
+// Sources: Yahoo Finance (FX), OANDA, Binance, Mirror Feeds (OTC)
 
 import { Vector, Timeframe, MarketType, Direction } from "@/types/trading";
 import { MarketCandle } from "./dataRouter";

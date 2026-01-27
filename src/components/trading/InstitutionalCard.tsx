@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Institutional Signal Card (Large Display)
+// SENTINEL X - Institutional Signal Card (Large Display)
 
 import { useEffect, useState } from "react";
 import { Signal } from "@/types/trading";

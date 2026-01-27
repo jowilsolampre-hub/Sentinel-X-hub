@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - OTC Data Honesty Layer
+// SENTINEL X - OTC Data Honesty Layer (Zero-Fake Policy)
 // Tags OTC price data as observed/derived with higher uncertainty thresholds
 
 import { Signal, Vector, MarketType } from "@/types/trading";

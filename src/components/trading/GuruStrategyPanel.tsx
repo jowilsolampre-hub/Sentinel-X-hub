@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Guru Strategy Panel (v3)
+// SENTINEL X - Guru Strategy Panel (v5)
 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

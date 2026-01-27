@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Market Type Toggle (REAL vs OTC)
+// SENTINEL X - Market Type Toggle (REAL vs OTC)
 
 import { MarketType } from "@/types/trading";
 import { cn } from "@/lib/utils";

@@ -1,5 +1,5 @@
-// SENTINEL X PRIME - Signal Output Bus (v3)
-// Unified signal output interface for Telegram, Web, and other connectors
+// SENTINEL X - Signal Output Bus (v5)
+// Unified signal output interface for Web delivery
 
 import { Signal, Session, Vector, MarketType, Direction, Timeframe } from "@/types/trading";
 import { getCurrentSelection, BrokerId } from "./marketSelector";
@@ -138,7 +138,7 @@ export const formatSignalForTelegram = (signal: SignalOutput): string => {
   const confidenceBar = "█".repeat(Math.floor(signal.confidence / 10)) + "░".repeat(10 - Math.floor(signal.confidence / 10));
   
   return `
-🛰️ SENTINEL X PRIME SIGNAL
+🛰️ SENTINEL X SIGNAL
 
 ${icon} ${signal.direction} ${signal.asset}
 
@@ -161,7 +161,7 @@ ${signal.expirySeconds ? `⌛ Expiry: ${signal.expirySeconds}s` : ""}
 • Allow M1/M2 recovery
 • Stop after 2 losses
 
-🔒 SENTINEL X PRIME v3
+🔒 SENTINEL X v5
 `.trim();
 };
 

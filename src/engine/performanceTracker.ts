@@ -1,4 +1,4 @@
-// SENTINEL X PRIME - Performance Tracking & Analytics (v3)
+// SENTINEL X - Performance Tracking & Analytics (v5)
 // Win rate dashboard and session performance stats
 
 import { Signal, Session, Vector, MarketType } from "@/types/trading";

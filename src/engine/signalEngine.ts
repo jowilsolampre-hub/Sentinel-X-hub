@@ -1,5 +1,5 @@
-// SENTINEL X PRIME - Signal Generation Engine (v2 PATCHED)
-// Includes: Session-lock, Asset cooldowns, Missed-trade invalidation, OTC honesty
+// SENTINEL X - Signal Generation Engine (v5)
+// Modular architecture: Session-lock, Asset cooldowns, T+4 Protocol, Cross-validation
 
 import { 
   Signal, 

@@ -1,6 +1,6 @@
-// SENTINEL X PRIME - Signal Engine Hook (v4 TURBO)
+// SENTINEL X - Signal Engine Hook (v5 TURBO)
 // Ultra-fast scanning: 45 seconds to 2 minutes max
-// Includes: Fast broker bridge, Turbo scanner, Notifications
+// Includes: Intelligence engines, T+4 Protocol, Cross-validation
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Signal, Vector, EngineStats, RiskGate, Session } from "@/types/trading";
