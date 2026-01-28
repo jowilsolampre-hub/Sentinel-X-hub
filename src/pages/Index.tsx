@@ -1,7 +1,7 @@
 // SENTINEL X - Main Trading Intelligence Dashboard (v5)
 // Hardcore rules enforced: Market/Vector/TF selectors, Start/Stop, Live Candles, T+4 Protocol
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Vector, MarketType, Session } from "@/types/trading";
 import { useSignalEngine } from "@/hooks/useSignalEngine";
 import { Header } from "@/components/trading/Header";
@@ -14,6 +14,7 @@ import { LiveCandlesFeed } from "@/components/trading/LiveCandlesFeed";
 import { T4SignalTimer } from "@/components/trading/T4SignalTimer";
 import { InstitutionalCard } from "@/components/trading/InstitutionalCard";
 import { SignalFeed } from "@/components/trading/SignalFeed";
+import { SignalPopupModal } from "@/components/trading/SignalPopupModal";
 import { RiskPanel } from "@/components/trading/RiskPanel";
 import { StrategyPanel } from "@/components/trading/StrategyPanel";
 import { BrokerStatus } from "@/components/trading/BrokerStatus";
@@ -36,6 +37,7 @@ import {
   Brain
 } from "lucide-react";
 import { detectActiveSession } from "@/engine/sessionLock";
+import { toast } from "sonner";
 
 const Index = () => {
   // === STATE MANAGEMENT ===
@@ -44,6 +46,7 @@ const Index = () => {
   const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeOption>("5m");
   const [selectedBroker, setSelectedBroker] = useState<AnyBroker | undefined>(undefined);
   const [isPaused, setIsPaused] = useState(false);
+  const [showSignalModal, setShowSignalModal] = useState(false);
   
   // Get current session for strategy panel
   const currentSession = detectActiveSession() as Session;
@@ -70,6 +73,34 @@ const Index = () => {
     clearAllHistory
   } = useSignalEngine({ selectedVector: tradingVector });
 
+  // Show modal when pending acknowledgment signal appears
+  useEffect(() => {
+    if (pendingAcknowledgment) {
+      setShowSignalModal(true);
+      // Play sound notification
+      try {
+        const audio = new Audio("/notification.mp3");
+        audio.volume = 0.5;
+        audio.play().catch(() => {
+          // Fallback: Use Web Audio API beep
+          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const oscillator = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          oscillator.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          oscillator.frequency.value = 880;
+          oscillator.type = "sine";
+          gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+          oscillator.start(audioCtx.currentTime);
+          oscillator.stop(audioCtx.currentTime + 0.5);
+        });
+      } catch {
+        // Silent fallback
+      }
+    }
+  }, [pendingAcknowledgment]);
+
   const handleVectorChange = (vector: VectorOption) => {
     setSelectedVector(vector);
     updateVector(vectorToTradingVector(vector));
@@ -78,24 +109,52 @@ const Index = () => {
   const handleStartEngine = () => {
     const result = startEngine();
     if (!result.success) {
-      console.log(`[UI] Engine start blocked: ${result.reason}`);
+      toast.error(`Engine blocked: ${result.reason}`);
+    } else {
+      toast.success("Engine started - Triple Validation Active");
     }
     setIsPaused(false);
   };
 
   const handlePauseEngine = () => {
     if (isPaused) {
-      // Resume
       setIsPaused(false);
+      toast.info("Engine resumed");
     } else {
       pauseEngine();
       setIsPaused(true);
+      toast.info("Engine paused");
     }
   };
 
   const handleStopEngine = () => {
     stopEngine();
     setIsPaused(false);
+    toast.info("Engine stopped");
+  };
+
+  const handleAcknowledgeSignal = (signalId: string) => {
+    acknowledgeSignal(signalId);
+    setShowSignalModal(false);
+    toast.success("Signal acknowledged - Trade executed!");
+  };
+
+  const handleCancelSignal = (signalId: string) => {
+    cancelSignal(signalId);
+    setShowSignalModal(false);
+    toast.info("Signal cancelled");
+  };
+
+  const handleClearSignals = () => {
+    clearSignals();
+    toast.info("Signals cleared");
+  };
+
+  const handleResetEngine = () => {
+    handleStopEngine();
+    setTimeout(() => {
+      handleStartEngine();
+    }, 100);
   };
 
   // Get the most recent pending signal for institutional card
@@ -211,7 +270,7 @@ const Index = () => {
                       <Button 
                         variant="outline" 
                         size="sm" 
-                        onClick={clearSignals}
+                        onClick={handleClearSignals}
                         className="gap-2"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -220,10 +279,7 @@ const Index = () => {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => {
-                          handleStopEngine();
-                          setTimeout(handleStartEngine, 100);
-                        }}
+                        onClick={handleResetEngine}
                         className="gap-2"
                       >
                         <RefreshCw className="w-4 h-4" />
@@ -234,8 +290,8 @@ const Index = () => {
                   <SignalFeed 
                     signals={signals} 
                     pendingAcknowledgment={pendingAcknowledgment}
-                    onAcknowledge={acknowledgeSignal}
-                    onCancel={cancelSignal}
+                    onAcknowledge={handleAcknowledgeSignal}
+                    onCancel={handleCancelSignal}
                   />
                 </Card>
               </div>
@@ -399,6 +455,14 @@ const Index = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Signal Popup Modal */}
+      <SignalPopupModal
+        signal={pendingAcknowledgment}
+        isOpen={showSignalModal && !!pendingAcknowledgment}
+        onAcknowledge={handleAcknowledgeSignal}
+        onCancel={handleCancelSignal}
+      />
 
       {/* Footer */}
       <footer className="container mx-auto px-4 py-6 mt-8 border-t border-border/50">
