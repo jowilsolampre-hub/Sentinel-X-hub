@@ -14,6 +14,8 @@ import { BrokerStatus } from "@/components/trading/BrokerStatus";
 import { PerformanceStats } from "@/components/trading/PerformanceStats";
 import { MarketTypeToggle } from "@/components/trading/MarketTypeToggle";
 import { MarketSelector } from "@/components/trading/MarketSelector";
+import { MarketUniversePanel, type AnyBroker } from "@/components/trading/MarketUniversePanel";
+import { IntelligencePanel } from "@/components/trading/IntelligencePanel";
 import { GuruStrategyPanel } from "@/components/trading/GuruStrategyPanel";
 import { PerformanceDashboard } from "@/components/trading/PerformanceDashboard";
 import { Button } from "@/components/ui/button";
@@ -26,13 +28,15 @@ import {
   LayoutDashboard,
   BarChart3,
   Plug,
-  Trophy
+  Trophy,
+  Brain
 } from "lucide-react";
 import { detectActiveSession } from "@/engine/sessionLock";
 
 const Index = () => {
   const [selectedVector, setSelectedVector] = useState<Vector | undefined>(undefined);
   const [marketType, setMarketType] = useState<MarketType>("REAL");
+  const [selectedBroker, setSelectedBroker] = useState<AnyBroker | undefined>(undefined);
   
   // Get current session for strategy panel
   const currentSession = detectActiveSession() as Session;
@@ -166,10 +170,14 @@ const Index = () => {
 
         {/* Main Content */}
         <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList className="bg-secondary/50">
+          <TabsList className="bg-secondary/50 flex-wrap">
             <TabsTrigger value="dashboard" className="gap-2">
               <LayoutDashboard className="w-4 h-4" />
               Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="intelligence" className="gap-2">
+              <Brain className="w-4 h-4" />
+              Intelligence
             </TabsTrigger>
             <TabsTrigger value="analytics" className="gap-2">
               <BarChart3 className="w-4 h-4" />
@@ -181,7 +189,7 @@ const Index = () => {
             </TabsTrigger>
             <TabsTrigger value="connections" className="gap-2">
               <Plug className="w-4 h-4" />
-              Connections
+              Markets
             </TabsTrigger>
           </TabsList>
 
@@ -205,11 +213,64 @@ const Index = () => {
 
               {/* Sidebar */}
               <div className="space-y-6">
+                <IntelligencePanel />
                 <RiskPanel riskGate={riskGate} />
                 <StrategyPanel marketType={marketType} />
-                <GuruStrategyPanel marketType={marketType} currentSession={currentSession} />
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="intelligence" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <IntelligencePanel />
+              <GuruStrategyPanel marketType={marketType} currentSession={currentSession} />
+            </div>
+            
+            <Card className="p-6 border border-border/50 gradient-card">
+              <div className="flex items-center gap-2 mb-4">
+                <Brain className="w-5 h-5 text-primary" />
+                <h3 className="font-bold">Intelligence Engine Architecture</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                SENTINEL X uses five specialized decision engines working in concert to produce high-probability signals.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                  <p className="text-sm font-medium">Bias Engine</p>
+                  <p className="text-xs text-muted-foreground mt-1">HTF directional context from 1H/30M</p>
+                </div>
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                  <p className="text-sm font-medium">Volatility Engine</p>
+                  <p className="text-xs text-muted-foreground mt-1">Market regime filter (ATR-based)</p>
+                </div>
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                  <p className="text-sm font-medium">Session Engine</p>
+                  <p className="text-xs text-muted-foreground mt-1">Time-of-day as indicator</p>
+                </div>
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                  <p className="text-sm font-medium">Confidence Engine</p>
+                  <p className="text-xs text-muted-foreground mt-1">Signal strength scoring</p>
+                </div>
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                  <p className="text-sm font-medium">Confluence Engine</p>
+                  <p className="text-xs text-muted-foreground mt-1">Final gatekeeper (70%+)</p>
+                </div>
+              </div>
+              
+              <div className="mt-6 p-4 bg-secondary/30 rounded-lg">
+                <h4 className="text-sm font-medium mb-2">Safe States</h4>
+                <div className="flex flex-wrap gap-2">
+                  <span className="px-2 py-1 text-xs bg-success/20 text-success rounded">ACTIVE</span>
+                  <span className="px-2 py-1 text-xs bg-muted/20 text-muted-foreground rounded">IDLE</span>
+                  <span className="px-2 py-1 text-xs bg-warning/20 text-warning rounded">WAIT</span>
+                  <span className="px-2 py-1 text-xs bg-destructive/20 text-destructive rounded">NO_TRADE</span>
+                  <span className="px-2 py-1 text-xs bg-accent/20 text-accent rounded">COOLDOWN</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Safe states prevent overtrading and enforce professional restraint.
+                </p>
+              </div>
+            </Card>
           </TabsContent>
 
           <TabsContent value="analytics" className="space-y-6">
@@ -331,58 +392,75 @@ const Index = () => {
 
           <TabsContent value="connections" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Market & Broker Selector */}
-              <MarketSelector />
+              {/* Market Universe Panel - OTC vs REAL separation */}
+              <MarketUniversePanel 
+                selectedBroker={selectedBroker}
+                onBrokerSelect={setSelectedBroker}
+              />
               
               <BrokerStatus />
-              
-              <Card className="p-6 border border-border/50 gradient-card lg:col-span-2">
-                <div className="flex items-center gap-2 mb-4">
-                  <Settings className="w-5 h-5 text-primary" />
-                  <h3 className="font-bold">Engine Configuration (v4 TURBO)</h3>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                      <span className="text-sm">Session Lock</span>
-                      <span className={`font-mono text-sm ${sessionLock.isLocked ? "text-success" : "text-muted-foreground"}`}>
-                        {sessionLock.isLocked ? `Locked (${sessionLock.lockedSession})` : "Unlocked"}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                      <span className="text-sm">Asset Cooldowns</span>
-                      <span className="font-mono text-sm">{activeCooldowns} active</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-success/10 rounded-lg border border-success/30">
-                      <span className="text-sm font-medium">⚡ Turbo Scanner</span>
-                      <span className="font-mono text-sm text-success">45s-2min</span>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-success/10 rounded-lg border border-success/30">
-                      <span className="text-sm font-medium">⚡ Fast Broker Bridge</span>
-                      <span className="font-mono text-sm text-success">~30ms</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                      <span className="text-sm">T+4 Protocol</span>
-                      <span className="font-mono text-sm text-success">Enforced</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                      <span className="text-sm">Scan Interval</span>
-                      <span className="font-mono text-sm text-primary">800ms</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 p-4 bg-success/10 rounded-lg border border-success/30">
-                  <p className="text-sm text-success">
-                    <strong>🚀 v4 TURBO Active:</strong> Ultra-fast broker connections (pre-initialized), 
-                    parallel scanning, cached pattern analysis, 45s-2min signal generation.
-                  </p>
-                </div>
-              </Card>
             </div>
+
+            <Card className="p-6 border border-border/50 gradient-card">
+              <div className="flex items-center gap-2 mb-4">
+                <Settings className="w-5 h-5 text-primary" />
+                <h3 className="font-bold">Engine Configuration (v5 TURBO)</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">Session Lock</span>
+                    <span className={`font-mono text-sm ${sessionLock.isLocked ? "text-success" : "text-muted-foreground"}`}>
+                      {sessionLock.isLocked ? `Locked (${sessionLock.lockedSession})` : "Unlocked"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">Asset Cooldowns</span>
+                    <span className="font-mono text-sm">{activeCooldowns} active</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-success/10 rounded-lg border border-success/30">
+                    <span className="text-sm font-medium">⚡ Turbo Scanner</span>
+                    <span className="font-mono text-sm text-success">45s-2min</span>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-success/10 rounded-lg border border-success/30">
+                    <span className="text-sm font-medium">⚡ Fast Broker Bridge</span>
+                    <span className="font-mono text-sm text-success">~30ms</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">T+4 Protocol</span>
+                    <span className="font-mono text-sm text-success">Enforced</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                    <span className="text-sm">Scan Interval</span>
+                    <span className="font-mono text-sm text-primary">800ms</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 p-4 bg-primary/10 rounded-lg border border-primary/30">
+                <h4 className="text-sm font-medium mb-2">Data Source Strategy</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="p-2 bg-warning/10 rounded border border-warning/30">
+                    <span className="font-medium text-warning">OTC Markets (PO/Quotex)</span>
+                    <p className="text-muted-foreground mt-1">TradingView real charts + Manual execution window</p>
+                  </div>
+                  <div className="p-2 bg-success/10 rounded border border-success/30">
+                    <span className="font-medium text-success">REAL Markets</span>
+                    <p className="text-muted-foreground mt-1">Official APIs (Binance, OANDA) + MT5 bridge</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 p-4 bg-success/10 rounded-lg border border-success/30">
+                <p className="text-sm text-success">
+                  <strong>🚀 v5 TURBO Active:</strong> Modular intelligence engines, cross-market validation, 
+                  T+4 protocol, ultra-fast scanning (45s-2min).
+                </p>
+              </div>
+            </Card>
           </TabsContent>
         </Tabs>
 
