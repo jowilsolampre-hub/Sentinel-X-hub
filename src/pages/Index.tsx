@@ -54,11 +54,15 @@ const Index = () => {
   // Convert VectorOption to Vector for engine
   const tradingVector = vectorToTradingVector(selectedVector);
   
+  // Hook with ALL options passed
   const {
     signals,
     stats,
     riskGate,
     isRunning,
+    isScanning,
+    scanProgress,
+    scanPhase,
     sessionLock,
     activeCooldowns,
     pendingAcknowledgment,
@@ -70,8 +74,22 @@ const Index = () => {
     setSelectedVector: updateVector,
     acknowledgeSignal,
     cancelSignal,
-    clearAllHistory
-  } = useSignalEngine({ selectedVector: tradingVector });
+    clearAllHistory,
+    updateConfig
+  } = useSignalEngine({ 
+    selectedVector: tradingVector,
+    marketCategory,
+    timeframe: selectedTimeframe
+  });
+
+  // Update config when selectors change
+  useEffect(() => {
+    updateConfig({
+      selectedVector: tradingVector,
+      marketCategory,
+      timeframe: selectedTimeframe
+    });
+  }, [tradingVector, marketCategory, selectedTimeframe, updateConfig]);
 
   // Show modal when pending acknowledgment signal appears
   useEffect(() => {
@@ -204,6 +222,9 @@ const Index = () => {
         <EngineControlPanel
           isRunning={isRunning}
           isPaused={isPaused}
+          isScanning={isScanning}
+          scanProgress={scanProgress}
+          scanPhase={scanPhase}
           sessionLock={{
             isLocked: sessionLock.isLocked,
             lockedSession: sessionLock.lockedSession,
