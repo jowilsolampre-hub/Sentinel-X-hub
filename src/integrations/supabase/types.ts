@@ -14,16 +14,190 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      market_state: {
+        Row: {
+          armed: boolean
+          connection_status: string
+          last_seen_at: string | null
+          market_id: Database["public"]["Enums"]["market_id_enum"]
+          meta: Json
+          updated_at: string
+        }
+        Insert: {
+          armed?: boolean
+          connection_status?: string
+          last_seen_at?: string | null
+          market_id: Database["public"]["Enums"]["market_id_enum"]
+          meta?: Json
+          updated_at?: string
+        }
+        Update: {
+          armed?: boolean
+          connection_status?: string
+          last_seen_at?: string | null
+          market_id?: Database["public"]["Enums"]["market_id_enum"]
+          meta?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      settings: {
+        Row: {
+          key: string
+          updated_at: string
+          value_json: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          value_json: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          value_json?: Json
+        }
+        Relationships: []
+      }
+      signals: {
+        Row: {
+          created_at: string
+          direction: string
+          executed_at: string | null
+          expires_at: string | null
+          id: string
+          market_id: Database["public"]["Enums"]["market_id_enum"]
+          notes: string | null
+          outcome: Database["public"]["Enums"]["outcome_enum"]
+          outcome_reason: string | null
+          score: number
+          score_detail_json: Json
+          stage: Database["public"]["Enums"]["signal_stage_enum"]
+          status: Database["public"]["Enums"]["signal_status_enum"]
+          strategy: string | null
+          symbol: string
+          timeframe: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          direction: string
+          executed_at?: string | null
+          expires_at?: string | null
+          id?: string
+          market_id: Database["public"]["Enums"]["market_id_enum"]
+          notes?: string | null
+          outcome?: Database["public"]["Enums"]["outcome_enum"]
+          outcome_reason?: string | null
+          score?: number
+          score_detail_json?: Json
+          stage: Database["public"]["Enums"]["signal_stage_enum"]
+          status?: Database["public"]["Enums"]["signal_status_enum"]
+          strategy?: string | null
+          symbol: string
+          timeframe?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          direction?: string
+          executed_at?: string | null
+          expires_at?: string | null
+          id?: string
+          market_id?: Database["public"]["Enums"]["market_id_enum"]
+          notes?: string | null
+          outcome?: Database["public"]["Enums"]["outcome_enum"]
+          outcome_reason?: string | null
+          score?: number
+          score_detail_json?: Json
+          stage?: Database["public"]["Enums"]["signal_stage_enum"]
+          status?: Database["public"]["Enums"]["signal_status_enum"]
+          strategy?: string | null
+          symbol?: string
+          timeframe?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      active_finals: {
+        Row: {
+          created_at: string | null
+          direction: string | null
+          executed_at: string | null
+          expires_at: string | null
+          id: string | null
+          market_id: Database["public"]["Enums"]["market_id_enum"] | null
+          notes: string | null
+          outcome: Database["public"]["Enums"]["outcome_enum"] | null
+          outcome_reason: string | null
+          score: number | null
+          score_detail_json: Json | null
+          stage: Database["public"]["Enums"]["signal_stage_enum"] | null
+          status: Database["public"]["Enums"]["signal_status_enum"] | null
+          strategy: string | null
+          symbol: string | null
+          timeframe: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          direction?: string | null
+          executed_at?: string | null
+          expires_at?: string | null
+          id?: string | null
+          market_id?: Database["public"]["Enums"]["market_id_enum"] | null
+          notes?: string | null
+          outcome?: Database["public"]["Enums"]["outcome_enum"] | null
+          outcome_reason?: string | null
+          score?: number | null
+          score_detail_json?: Json | null
+          stage?: Database["public"]["Enums"]["signal_stage_enum"] | null
+          status?: Database["public"]["Enums"]["signal_status_enum"] | null
+          strategy?: string | null
+          symbol?: string | null
+          timeframe?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          direction?: string | null
+          executed_at?: string | null
+          expires_at?: string | null
+          id?: string | null
+          market_id?: Database["public"]["Enums"]["market_id_enum"] | null
+          notes?: string | null
+          outcome?: Database["public"]["Enums"]["outcome_enum"] | null
+          outcome_reason?: string | null
+          score?: number | null
+          score_detail_json?: Json | null
+          stage?: Database["public"]["Enums"]["signal_stage_enum"] | null
+          status?: Database["public"]["Enums"]["signal_status_enum"] | null
+          strategy?: string | null
+          symbol?: string | null
+          timeframe?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      market_id_enum: "BINANCE" | "MT5_FOREX" | "PO_OTC" | "QX_OTC"
+      outcome_enum: "WIN" | "LOSS" | "BREAKEVEN" | "UNKNOWN"
+      signal_stage_enum: "CANDIDATE" | "CONFIRM" | "FINAL"
+      signal_status_enum:
+        | "CANDIDATE"
+        | "CONFIRM"
+        | "FINAL"
+        | "EXECUTED"
+        | "EXPIRED"
+        | "REJECTED"
+        | "BLOCKED"
+        | "DISMISSED"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +324,20 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      market_id_enum: ["BINANCE", "MT5_FOREX", "PO_OTC", "QX_OTC"],
+      outcome_enum: ["WIN", "LOSS", "BREAKEVEN", "UNKNOWN"],
+      signal_stage_enum: ["CANDIDATE", "CONFIRM", "FINAL"],
+      signal_status_enum: [
+        "CANDIDATE",
+        "CONFIRM",
+        "FINAL",
+        "EXECUTED",
+        "EXPIRED",
+        "REJECTED",
+        "BLOCKED",
+        "DISMISSED",
+      ],
+    },
   },
 } as const
