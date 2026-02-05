@@ -12,7 +12,7 @@ import { TimeframeOption, getTimeframeMinutes } from "@/components/trading/Timef
 export interface ScanConfig {
   marketCategory: MarketCategory;
   vector: string;               // "Hybrid" | vector name
-  timeframe: TimeframeOption;   // Selected timeframe(s)
+  timeframes: TimeframeOption[];// Selected timeframe(s) - supports multi-TF
   selectedPairs?: string[];     // Optional: specific pairs to scan
 }
 
@@ -22,7 +22,8 @@ interface ScanState {
   scanStartTime: Date | null;
   analysisProgress: number;
   phase: "IDLE" | "ANALYZING" | "VALIDATING" | "SIGNAL_READY" | "PAUSED";
-  targetTimeframe: TimeframeOption;
+  targetTimeframes: TimeframeOption[];
+  isMultiTfMode: boolean;
   pendingSignals: Signal[];
 }
 
@@ -31,7 +32,8 @@ let scanState: ScanState = {
   scanStartTime: null,
   analysisProgress: 0,
   phase: "IDLE",
-  targetTimeframe: "5m",
+  targetTimeframes: ["5m"],
+  isMultiTfMode: false,
   pendingSignals: []
 };
 
@@ -187,17 +189,20 @@ export const protocolScan = async (
   let validationsPassed = 0;
   let validationsFailed = 0;
 
+  const isMultiTf = config.timeframes.length > 1;
+
   // Update state
   scanState = {
     isScanning: true,
     scanStartTime: new Date(),
     analysisProgress: 0,
     phase: "ANALYZING",
-    targetTimeframe: config.timeframe,
+    targetTimeframes: config.timeframes,
+    isMultiTfMode: isMultiTf,
     pendingSignals: []
   };
 
-  console.log(`[PROTOCOL] Starting scan: ${config.marketCategory} | ${config.vector} | ${config.timeframe}`);
+  console.log(`[PROTOCOL] Starting scan: ${config.marketCategory} | ${config.vector} | TFs: ${config.timeframes.join(", ")} | Multi-TF: ${isMultiTf}`);
 
   // Get assets to scan
   const assets = getAssetsForConfig(config);
@@ -253,45 +258,50 @@ export const protocolScan = async (
       // Select strategy
       const strategy = strategies[Math.floor(Math.random() * strategies.length)];
 
-      // Calculate T+4 execution time
-      const executeAt = calculateT4ExecutionTime(config.timeframe);
-      const now = new Date();
-      const prepTimeMs = executeAt.getTime() - now.getTime();
-      const prepTimeMin = Math.round(prepTimeMs / 60000);
+      // Scan across ALL selected timeframes
+      for (const timeframe of config.timeframes) {
+        // Calculate T+4 execution time for this TF
+        const executeAt = calculateT4ExecutionTime(timeframe);
+        const now = new Date();
+        const prepTimeMs = executeAt.getTime() - now.getTime();
+        const prepTimeMin = Math.round(prepTimeMs / 60000);
 
-      // Only accept signals with 3-4 min prep time
-      if (prepTimeMin < 2 || prepTimeMin > 6) {
-        console.log(`[PROTOCOL] ⏰ ${asset} timing rejected: ${prepTimeMin}m prep time`);
-        continue;
+        // Only accept signals with 2-6 min prep time
+        if (prepTimeMin < 2 || prepTimeMin > 6) {
+          console.log(`[PROTOCOL] ⏰ ${asset}@${timeframe} timing rejected: ${prepTimeMin}m prep time`);
+          continue;
+        }
+
+        // Calculate confidence
+        const baseConfidence = 85 + (validation.totalScore / 9) * 10;
+        const strategyBoost = (strategy.winRate - 95) / 5 * 3;
+        const tfBonus = timeframe === "5m" || timeframe === "15m" ? 1 : 0; // Optimal TFs
+        const confidence = Math.min(99.5, baseConfidence + strategyBoost + tfBonus);
+
+        // Create signal for this TF
+        const signal: Signal = {
+          id: generateId(),
+          asset,
+          vector: config.vector === "Hybrid" ? "Forex" : config.vector as Vector,
+          marketType,
+          strategy: `${strategy.name} (${validation.totalScore}/9)`,
+          direction,
+          issuedAt: now,
+          executeAt,
+          timeframe: mapTimeframeOption(timeframe),
+          confidence,
+          status: "PENDING",
+          session
+        };
+
+        signals.push(signal);
+
+        console.log(`[PROTOCOL] 🚀 Signal: ${asset}@${timeframe} ${direction} @ ${confidence.toFixed(1)}% | Execute in ${prepTimeMin}m`);
       }
 
-      // Calculate confidence
-      const baseConfidence = 85 + (validation.totalScore / 9) * 10;
-      const strategyBoost = (strategy.winRate - 95) / 5 * 3;
-      const confidence = Math.min(99.5, baseConfidence + strategyBoost);
-
-      // Create signal
-      const signal: Signal = {
-        id: generateId(),
-        asset,
-        vector: config.vector === "Hybrid" ? "Forex" : config.vector as Vector,
-        marketType,
-        strategy: `${strategy.name} (${validation.totalScore}/9)`,
-        direction,
-        issuedAt: now,
-        executeAt,
-        timeframe: mapTimeframeOption(config.timeframe),
-        confidence,
-        status: "PENDING",
-        session
-      };
-
-      signals.push(signal);
-
-      // Set cooldown
-      setAssetCooldown(asset, signal.vector, "COMPLETION", signal.id);
-
-      console.log(`[PROTOCOL] 🚀 Signal: ${asset} ${direction} @ ${confidence.toFixed(1)}% | Execute in ${prepTimeMin}m`);
+      // Set cooldown for asset (once per asset, not per TF)
+      const vectorKey = config.vector === "Hybrid" ? "Forex" : config.vector as Vector;
+      setAssetCooldown(asset, vectorKey, "COMPLETION", generateId());
     }
 
     // Batch delay
@@ -329,7 +339,11 @@ export const resetScanState = (): void => {
     scanStartTime: null,
     analysisProgress: 0,
     phase: "IDLE",
-    targetTimeframe: "5m",
+    targetTimeframes: ["5m"],
+    isMultiTfMode: false,
     pendingSignals: []
   };
 };
+
+// Check if in multi-TF mode (continuous scanning without pause)
+export const isMultiTfModeActive = (): boolean => scanState.isMultiTfMode;

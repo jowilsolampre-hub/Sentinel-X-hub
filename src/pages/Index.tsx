@@ -43,7 +43,7 @@ const Index = () => {
   // === STATE MANAGEMENT ===
   const [marketCategory, setMarketCategory] = useState<MarketCategory>("REAL");
   const [selectedVector, setSelectedVector] = useState<VectorOption>("Hybrid");
-  const [selectedTimeframe, setSelectedTimeframe] = useState<TimeframeOption>("5m");
+  const [selectedTimeframes, setSelectedTimeframes] = useState<TimeframeOption[]>(["5m"]);
   const [selectedBroker, setSelectedBroker] = useState<AnyBroker | undefined>(undefined);
   const [isPaused, setIsPaused] = useState(false);
   const [showSignalModal, setShowSignalModal] = useState(false);
@@ -79,7 +79,7 @@ const Index = () => {
   } = useSignalEngine({ 
     selectedVector: tradingVector,
     marketCategory,
-    timeframe: selectedTimeframe
+    timeframes: selectedTimeframes
   });
 
   // Update config when selectors change
@@ -87,9 +87,9 @@ const Index = () => {
     updateConfig({
       selectedVector: tradingVector,
       marketCategory,
-      timeframe: selectedTimeframe
+      timeframes: selectedTimeframes
     });
-  }, [tradingVector, marketCategory, selectedTimeframe, updateConfig]);
+  }, [tradingVector, marketCategory, selectedTimeframes, updateConfig]);
 
   // Show modal when pending acknowledgment signal appears
   useEffect(() => {
@@ -211,8 +211,8 @@ const Index = () => {
           
           <div className="flex items-center gap-4">
             <TimeframeSelector 
-              selected={selectedTimeframe} 
-              onSelect={setSelectedTimeframe} 
+              selected={selectedTimeframes} 
+              onSelect={setSelectedTimeframes} 
             />
             <FloatingWindowButton />
           </div>
@@ -270,13 +270,13 @@ const Index = () => {
                 <LiveCandlesFeed 
                   marketCategory={marketCategory}
                   vector={selectedVector}
-                  timeframe={selectedTimeframe}
+                  timeframe={selectedTimeframes[0]}
                   isRunning={isRunning && !isPaused}
                 />
 
                 {/* T+4 Signal Timer */}
                 <T4SignalTimer 
-                  timeframe={selectedTimeframe}
+                  timeframe={selectedTimeframes[0]}
                   isRunning={isRunning && !isPaused}
                 />
                 
