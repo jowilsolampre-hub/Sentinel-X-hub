@@ -22,6 +22,7 @@ import { PerformanceStats } from "@/components/trading/PerformanceStats";
 import { MarketUniversePanel, type AnyBroker } from "@/components/trading/MarketUniversePanel";
 import { IntelligencePanel } from "@/components/trading/IntelligencePanel";
 import { GuruStrategyPanel } from "@/components/trading/GuruStrategyPanel";
+import { AITrendScanner } from "@/components/trading/AITrendScanner";
 import { PerformanceDashboard } from "@/components/trading/PerformanceDashboard";
 import { FloatingWindowButton } from "@/components/trading/FloatingWindowButton";
 import { Button } from "@/components/ui/button";
@@ -329,8 +330,13 @@ const Index = () => {
           {/* === INTELLIGENCE TAB === */}
           <TabsContent value="intelligence" className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <IntelligencePanel />
+              <AITrendScanner />
               <GuruStrategyPanel marketType={marketType} currentSession={currentSession} />
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <IntelligencePanel />
+            
             </div>
             
             <Card className="p-6 border border-border/50 gradient-card">
