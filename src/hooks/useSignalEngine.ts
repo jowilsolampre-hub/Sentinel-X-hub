@@ -53,7 +53,7 @@ interface SessionLockInfo {
 export interface UseSignalEngineOptions {
   selectedVector?: Vector;
   marketCategory?: MarketCategory;
-  timeframe?: TimeframeOption;
+  timeframes?: TimeframeOption[];
   selectedPairs?: string[];
   maxSignals?: number;
 }
@@ -98,7 +98,7 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
   const [config, setConfig] = useState<UseSignalEngineOptions>({
     selectedVector: options.selectedVector,
     marketCategory: options.marketCategory || "REAL",
-    timeframe: options.timeframe || "5m",
+    timeframes: options.timeframes || ["5m"],
     selectedPairs: options.selectedPairs
   });
 
@@ -181,14 +181,14 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     setScanPhase("ANALYZING");
     setStats(prev => ({ ...prev, engineStatus: "RUNNING" }));
 
-    console.log(`[HOOK] Starting protocol scan: ${config.marketCategory} | ${config.selectedVector || "Hybrid"} | ${config.timeframe}`);
+    console.log(`[HOOK] Starting protocol scan: ${config.marketCategory} | ${config.selectedVector || "Hybrid"} | TFs: ${config.timeframes?.join(", ")}`);
 
     try {
       // Build scan config
       const scanConfig: ScanConfig = {
         marketCategory: config.marketCategory || "REAL",
         vector: config.selectedVector || "Hybrid",
-        timeframe: config.timeframe || "5m",
+        timeframes: config.timeframes || ["5m"],
         selectedPairs: config.selectedPairs
       };
 
@@ -405,9 +405,9 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
       ...prev,
       selectedVector: options.selectedVector,
       marketCategory: options.marketCategory || prev.marketCategory,
-      timeframe: options.timeframe || prev.timeframe
+      timeframes: options.timeframes || prev.timeframes
     }));
-  }, [options.selectedVector, options.marketCategory, options.timeframe]);
+  }, [options.selectedVector, options.marketCategory, options.timeframes]);
 
   return {
     signals,
