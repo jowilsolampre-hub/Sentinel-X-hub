@@ -3,9 +3,14 @@
 import { SessionIndicator } from "./SessionIndicator";
 import { FloatingWindowButton } from "./FloatingWindowButton";
 import { Badge } from "@/components/ui/badge";
-import { Zap, Radio } from "lucide-react";
+import { Zap, Radio, Tv } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export const Header = () => {
+interface HeaderProps {
+  tvConnected?: boolean;
+}
+
+export const Header = ({ tvConnected = false }: HeaderProps) => {
   return (
     <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4">
@@ -37,8 +42,28 @@ export const Header = () => {
             </div>
           </div>
 
-          {/* Floating Window & Session Controls */}
+          {/* TradingView Status, Floating Window & Session Controls */}
           <div className="flex items-center gap-4">
+            {/* TradingView Connection Indicator */}
+            <div className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm",
+              tvConnected 
+                ? "bg-success/10 border-success/30 text-success" 
+                : "bg-muted/50 border-border text-muted-foreground"
+            )}>
+              <Tv className="w-4 h-4" />
+              <span className="hidden sm:inline font-medium">TradingView</span>
+              <span className="relative flex h-2 w-2">
+                {tvConnected ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
+                  </>
+                ) : (
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground"></span>
+                )}
+              </span>
+            </div>
             <FloatingWindowButton />
             <SessionIndicator />
           </div>
