@@ -214,7 +214,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header tvConnected={tvConnected} />
       
       <main className="container mx-auto px-4 py-6 space-y-4">
         {/* === SESSION AWARE BAR === */}
