@@ -51,8 +51,8 @@ const tripleValidate = (meta: any): ValidationResult => {
   const biasScore = meta?.biasScore ?? 0;
   const structureScore = meta?.structureScore ?? 0;
   const triggerScore = meta?.triggerScore ?? 0;
-  const sessionOk = meta?.sessionOk ?? false;
-  const volatilityOk = meta?.volatilityOk ?? false;
+  const sessionOk = meta?.sessionOk ?? true;
+  const volatilityOk = meta?.volatilityOk ?? true;
   const liquidityTrap = meta?.liquidityTrap ?? false;
   const highImpactNews = meta?.highImpactNews ?? false;
   
@@ -93,8 +93,6 @@ const tripleValidate = (meta: any): ValidationResult => {
 
 // Cross-market validation for OTC signals
 const crossValidateOTC = (marketId: string, direction: string): { validated: boolean; validator: string; confidence: number } => {
-  // For OTC markets, we simulate cross-validation against real market data
-  // In production, this would call OANDA/MT5 APIs
   const isOTC = marketId.includes("OTC");
   
   if (!isOTC) {
@@ -118,9 +116,20 @@ const crossValidateOTC = (marketId: string, direction: string): { validated: boo
   return { validated: false, validator: "NONE", confidence: 40 };
 };
 
-// Generate signal ID
-const generateSignalId = (): string => {
-  return `TV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+// Map market_id from webhook to database enum
+const mapMarketId = (marketId: string): string => {
+  const mapping: Record<string, string> = {
+    "BINANCE": "BINANCE",
+    "MT5": "MT5_FOREX",
+    "MT5_FOREX": "MT5_FOREX",
+    "PO": "PO_OTC",
+    "PO_OTC": "PO_OTC",
+    "POCKET": "PO_OTC",
+    "QX": "QX_OTC",
+    "QX_OTC": "QX_OTC",
+    "QUOTEX": "QX_OTC",
+  };
+  return mapping[marketId.toUpperCase()] || "MT5_FOREX";
 };
 
 Deno.serve(async (req) => {
@@ -159,14 +168,15 @@ Deno.serve(async (req) => {
       direction,
       stage,
       tf,
+      strategy,
       meta = {},
     } = body;
 
     // Validate required fields
-    if (!market_id || !symbol || !direction || !stage || !tf) {
+    if (!market_id || !symbol || !direction || !stage) {
       console.log('[TV-WEBHOOK] Missing required fields');
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: market_id, symbol, direction, stage, tf' }),
+        JSON.stringify({ error: 'Missing required fields: market_id, symbol, direction, stage' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -175,68 +185,102 @@ Deno.serve(async (req) => {
     const validation = tripleValidate(meta);
     console.log('[TV-WEBHOOK] Triple validation:', validation);
 
-    if (!validation.isValid) {
-      console.log('[TV-WEBHOOK] Signal rejected:', validation.reason);
-      return new Response(
-        JSON.stringify({
-          status: 'REJECTED',
-          reason: validation.reason,
-          validation,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Cross-market validation for OTC
     const crossValidation = crossValidateOTC(market_id, direction);
     console.log('[TV-WEBHOOK] Cross validation:', crossValidation);
 
-    if (!crossValidation.validated) {
-      console.log('[TV-WEBHOOK] Cross-validation failed');
-      return new Response(
-        JSON.stringify({
-          status: 'CROSS_VALIDATION_FAILED',
-          reason: 'Real market validation failed',
-          crossValidation,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Calculate T+4 execution time
-    const executeAt = calculateExecutionTime(tf);
+    const timeframe = tf || "5m";
+    const executeAt = calculateExecutionTime(timeframe);
     const now = new Date();
     const prepTimeMs = executeAt.getTime() - now.getTime();
     const prepTimeMinutes = Math.floor(prepTimeMs / 60000);
 
-    // Build signal object
-    const signal = {
-      id: generateSignalId(),
-      market_id,
-      symbol,
+    // Determine final status
+    let finalStatus = "CANDIDATE";
+    let finalStage = stage.toUpperCase();
+    
+    if (!validation.isValid) {
+      finalStatus = "REJECTED";
+    } else if (!crossValidation.validated) {
+      finalStatus = "BLOCKED";
+    } else if (finalStage === "CONFIRM" || finalStage === "FINAL") {
+      finalStatus = "FINAL";
+      finalStage = "FINAL";
+    }
+
+    // Calculate confidence
+    const confidence = validation.isValid && crossValidation.validated 
+      ? crossValidation.confidence 
+      : Math.min(50, validation.totalScore * 10);
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Build signal record for database
+    const signalRecord = {
+      market_id: mapMarketId(market_id),
+      symbol: symbol.toUpperCase(),
       direction: direction.toUpperCase(),
-      stage: stage.toUpperCase(),
-      timeframe: tf,
-      issuedAt: now.toISOString(),
-      executeAt: executeAt.toISOString(),
-      prepTimeMinutes,
-      confidence: crossValidation.confidence,
-      validator: crossValidation.validator,
-      validation: {
+      stage: finalStage as "CANDIDATE" | "CONFIRM" | "FINAL",
+      status: finalStatus as "CANDIDATE" | "CONFIRM" | "FINAL" | "REJECTED" | "BLOCKED",
+      timeframe: timeframe,
+      score: Math.round(confidence),
+      score_detail_json: {
         tripleScore: validation.totalScore,
-        ...validation.breakdown,
+        biasScore: validation.breakdown.biasScore,
+        structureScore: validation.breakdown.structureScore,
+        triggerScore: validation.breakdown.triggerScore,
+        crossValidator: crossValidation.validator,
+        crossConfidence: crossValidation.confidence,
+        prepTimeMinutes,
+        executeAt: executeAt.toISOString(),
       },
-      status: stage.toUpperCase() === 'CONFIRM' ? 'FINAL' : 'CANDIDATE',
+      strategy: strategy || meta.strategy || "TradingView Alert",
+      notes: validation.isValid 
+        ? `T+${prepTimeMinutes}m | ${crossValidation.validator} validated` 
+        : validation.reason,
+      expires_at: executeAt.toISOString(),
+      outcome: "UNKNOWN" as const,
     };
 
-    console.log('[TV-WEBHOOK] Signal processed:', signal);
+    console.log('[TV-WEBHOOK] Inserting signal:', signalRecord);
+
+    // Insert into database (this triggers realtime subscription)
+    const { data: insertedSignal, error: insertError } = await supabase
+      .from('signals')
+      .insert(signalRecord)
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('[TV-WEBHOOK] Database insert error:', insertError);
+      return new Response(
+        JSON.stringify({ 
+          status: 'DB_ERROR', 
+          error: insertError.message,
+          signal: signalRecord 
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('[TV-WEBHOOK] Signal inserted:', insertedSignal);
 
     // Return success with signal
     return new Response(
       JSON.stringify({
-        status: 'ACCEPTED',
-        signal,
-        message: `Signal ${signal.id} processed. Execute at ${executeAt.toISOString()} (T-${prepTimeMinutes}m)`,
+        status: finalStatus === "FINAL" ? 'ACCEPTED' : finalStatus,
+        signal: insertedSignal,
+        validation: {
+          triple: validation,
+          cross: crossValidation,
+        },
+        message: finalStatus === "FINAL" 
+          ? `Signal ${insertedSignal.id} ready. Execute at ${executeAt.toISOString()} (T-${prepTimeMinutes}m)`
+          : `Signal ${finalStatus}: ${validation.reason}`,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

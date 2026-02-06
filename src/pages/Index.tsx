@@ -1,9 +1,10 @@
 // SENTINEL X - Main Trading Intelligence Dashboard (v5)
 // Hardcore rules enforced: Market/Vector/TF selectors, Start/Stop, Live Candles, T+4 Protocol
 
-import { useState, useEffect } from "react";
-import { Vector, MarketType, Session } from "@/types/trading";
+import { useState, useEffect, useCallback } from "react";
+import { Vector, MarketType, Session, Signal } from "@/types/trading";
 import { useSignalEngine } from "@/hooks/useSignalEngine";
+import { useTradingViewSignals } from "@/hooks/useTradingViewSignals";
 import { Header } from "@/components/trading/Header";
 import { VectorSelector, type VectorOption, vectorToTradingVector } from "@/components/trading/VectorSelector";
 import { MarketCategorySelector, type MarketCategory } from "@/components/trading/MarketCategorySelector";
@@ -48,6 +49,7 @@ const Index = () => {
   const [selectedBroker, setSelectedBroker] = useState<AnyBroker | undefined>(undefined);
   const [isPaused, setIsPaused] = useState(false);
   const [showSignalModal, setShowSignalModal] = useState(false);
+  const [tvPendingSignal, setTvPendingSignal] = useState<Signal | null>(null);
   
   // Get current session for strategy panel
   const currentSession = detectActiveSession() as Session;
@@ -83,6 +85,15 @@ const Index = () => {
     timeframes: selectedTimeframes
   });
 
+  // TradingView Realtime Signals - triggers popup on new FINAL signals
+  const handleTVSignal = useCallback((signal: Signal) => {
+    console.log("[INDEX] TradingView signal received:", signal);
+    setTvPendingSignal(signal);
+    setShowSignalModal(true);
+  }, []);
+
+  const { tvSignals, isConnected: tvConnected } = useTradingViewSignals(handleTVSignal);
+
   // Update config when selectors change
   useEffect(() => {
     updateConfig({
@@ -92,7 +103,7 @@ const Index = () => {
     });
   }, [tradingVector, marketCategory, selectedTimeframes, updateConfig]);
 
-  // Show modal when pending acknowledgment signal appears
+  // Show modal when pending acknowledgment signal appears (from engine)
   useEffect(() => {
     if (pendingAcknowledgment) {
       setShowSignalModal(true);
@@ -119,6 +130,9 @@ const Index = () => {
       }
     }
   }, [pendingAcknowledgment]);
+
+  // Determine which signal to show in modal (TV signal takes priority)
+  const activeModalSignal = tvPendingSignal || pendingAcknowledgment;
 
   const handleVectorChange = (vector: VectorOption) => {
     setSelectedVector(vector);
@@ -153,12 +167,28 @@ const Index = () => {
   };
 
   const handleAcknowledgeSignal = (signalId: string) => {
+    // Handle TV signal acknowledgment
+    if (tvPendingSignal && tvPendingSignal.id === signalId) {
+      setTvPendingSignal(null);
+      setShowSignalModal(false);
+      toast.success("📺 TradingView Signal acknowledged - Trade executed!");
+      return;
+    }
+    // Handle engine signal acknowledgment
     acknowledgeSignal(signalId);
     setShowSignalModal(false);
     toast.success("Signal acknowledged - Trade executed!");
   };
 
   const handleCancelSignal = (signalId: string) => {
+    // Handle TV signal cancellation
+    if (tvPendingSignal && tvPendingSignal.id === signalId) {
+      setTvPendingSignal(null);
+      setShowSignalModal(false);
+      toast.info("📺 TradingView Signal cancelled");
+      return;
+    }
+    // Handle engine signal cancellation
     cancelSignal(signalId);
     setShowSignalModal(false);
     toast.info("Signal cancelled");
@@ -483,10 +513,10 @@ const Index = () => {
         </Tabs>
       </main>
 
-      {/* Signal Popup Modal */}
+      {/* Signal Popup Modal - Shows both engine and TradingView signals */}
       <SignalPopupModal
-        signal={pendingAcknowledgment}
-        isOpen={showSignalModal && !!pendingAcknowledgment}
+        signal={activeModalSignal}
+        isOpen={showSignalModal && !!activeModalSignal}
         onAcknowledge={handleAcknowledgeSignal}
         onCancel={handleCancelSignal}
       />
