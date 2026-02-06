@@ -41,12 +41,32 @@ export const SessionIndicator = () => {
     }
   };
 
+  // Format time for Zambia (Africa/Lusaka, UTC+2)
+  const zambiaTime = time.toLocaleTimeString("en-ZM", {
+    timeZone: "Africa/Lusaka",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
   return (
     <div className="flex items-center gap-4 px-4 py-2 bg-secondary/50 rounded-lg">
+      {/* Zambia Local Time */}
       <div className="flex items-center gap-2">
-        <Globe className="w-4 h-4 text-muted-foreground" />
+        <Globe className="w-4 h-4 text-primary" />
+        <span className="text-sm text-muted-foreground">ZM:</span>
+        <span className="font-mono font-medium text-primary">
+          {zambiaTime}
+        </span>
+      </div>
+      
+      <div className="h-4 w-px bg-border" />
+      
+      {/* UTC Time */}
+      <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">UTC:</span>
-        <span className="font-mono font-medium">
+        <span className="font-mono font-medium text-muted-foreground">
           {time.toUTCString().slice(17, 25)}
         </span>
       </div>
