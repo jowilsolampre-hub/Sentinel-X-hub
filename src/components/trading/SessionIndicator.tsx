@@ -1,14 +1,43 @@
 // SENTINEL X - Session Indicator Component
 
 import { useEffect, useState } from "react";
-import { Session, SESSION_TIMES } from "@/types/trading";
+import { Session } from "@/types/trading";
 import { getCurrentSession } from "@/engine/signalEngine";
 import { cn } from "@/lib/utils";
-import { Globe, Sun, Moon } from "lucide-react";
+import { Globe, Sun, Moon, ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+
+// Available timezones with labels
+const TIMEZONES = [
+  { id: "Africa/Lusaka", label: "Zambia", shortLabel: "ZM", offset: "+2" },
+  { id: "Europe/London", label: "London", shortLabel: "UK", offset: "+0/+1" },
+  { id: "America/New_York", label: "New York", shortLabel: "NY", offset: "-5/-4" },
+  { id: "Asia/Tokyo", label: "Tokyo", shortLabel: "JP", offset: "+9" },
+  { id: "Australia/Sydney", label: "Sydney", shortLabel: "AU", offset: "+10/+11" },
+  { id: "Africa/Johannesburg", label: "South Africa", shortLabel: "SA", offset: "+2" },
+  { id: "Asia/Dubai", label: "Dubai", shortLabel: "AE", offset: "+4" },
+  { id: "Asia/Singapore", label: "Singapore", shortLabel: "SG", offset: "+8" },
+  { id: "UTC", label: "UTC", shortLabel: "UTC", offset: "+0" },
+] as const;
+
+type TimezoneId = typeof TIMEZONES[number]["id"];
 
 export const SessionIndicator = () => {
   const [session, setSession] = useState<Session>(getCurrentSession());
   const [time, setTime] = useState(new Date());
+  const [selectedTimezone, setSelectedTimezone] = useState<TimezoneId>(() => {
+    // Load from localStorage or default to Zambia
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("sentinel-timezone") as TimezoneId) || "Africa/Lusaka";
+    }
+    return "Africa/Lusaka";
+  });
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -17,6 +46,12 @@ export const SessionIndicator = () => {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Save timezone preference
+  const handleTimezoneChange = (tz: TimezoneId) => {
+    setSelectedTimezone(tz);
+    localStorage.setItem("sentinel-timezone", tz);
+  };
 
   const getSessionColor = (s: Session) => {
     switch (s) {
@@ -41,9 +76,12 @@ export const SessionIndicator = () => {
     }
   };
 
-  // Format time for Zambia (Africa/Lusaka, UTC+2)
-  const zambiaTime = time.toLocaleTimeString("en-ZM", {
-    timeZone: "Africa/Lusaka",
+  // Get current timezone info
+  const currentTz = TIMEZONES.find(tz => tz.id === selectedTimezone) || TIMEZONES[0];
+
+  // Format time for selected timezone
+  const localTime = time.toLocaleTimeString("en-US", {
+    timeZone: selectedTimezone,
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -52,14 +90,44 @@ export const SessionIndicator = () => {
 
   return (
     <div className="flex items-center gap-4 px-4 py-2 bg-secondary/50 rounded-lg">
-      {/* Zambia Local Time */}
-      <div className="flex items-center gap-2">
-        <Globe className="w-4 h-4 text-primary" />
-        <span className="text-sm text-muted-foreground">ZM:</span>
-        <span className="font-mono font-medium text-primary">
-          {zambiaTime}
-        </span>
-      </div>
+      {/* Timezone Selector with Local Time */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="flex items-center gap-2 h-auto py-1 px-2 hover:bg-secondary"
+          >
+            <Globe className="w-4 h-4 text-primary" />
+            <span className="text-sm text-muted-foreground">{currentTz.shortLabel}:</span>
+            <span className="font-mono font-medium text-primary">
+              {localTime}
+            </span>
+            <ChevronDown className="w-3 h-3 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent 
+          align="start" 
+          className="w-56 bg-card border border-border z-50"
+        >
+          {TIMEZONES.map((tz) => (
+            <DropdownMenuItem
+              key={tz.id}
+              onClick={() => handleTimezoneChange(tz.id)}
+              className={cn(
+                "flex items-center justify-between cursor-pointer",
+                selectedTimezone === tz.id && "bg-primary/10 text-primary"
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <span className="font-medium">{tz.label}</span>
+                <span className="text-xs text-muted-foreground">({tz.shortLabel})</span>
+              </span>
+              <span className="text-xs text-muted-foreground">UTC{tz.offset}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       
       <div className="h-4 w-px bg-border" />
       
@@ -73,6 +141,7 @@ export const SessionIndicator = () => {
       
       <div className="h-4 w-px bg-border" />
       
+      {/* Session Indicator */}
       <div className="flex items-center gap-2">
         <span className={cn(getSessionColor(session))}>
           {getSessionIcon(session)}
