@@ -26,6 +26,7 @@ import { GuruStrategyPanel } from "@/components/trading/GuruStrategyPanel";
 import { AITrendScanner } from "@/components/trading/AITrendScanner";
 import { PerformanceDashboard } from "@/components/trading/PerformanceDashboard";
 import { FloatingWindowButton } from "@/components/trading/FloatingWindowButton";
+import { ScreenCaptureScanner } from "@/components/trading/ScreenCaptureScanner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -246,6 +247,7 @@ const Index = () => {
               onSelect={setSelectedTimeframes} 
             />
             <FloatingWindowButton />
+            <ScreenCaptureScanner />
           </div>
         </div>
 
