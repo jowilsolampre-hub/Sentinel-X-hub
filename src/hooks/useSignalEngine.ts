@@ -356,7 +356,8 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
 
   const updateConfig = useCallback((newConfig: Partial<UseSignalEngineOptions>) => {
     setConfig(prev => ({ ...prev, ...newConfig }));
-    console.log(`[HOOK] Config updated:`, newConfig);
+    console.log(`[HOOK] ⚡ Config locked: Market=${newConfig.marketCategory || "unchanged"} | Vector=${newConfig.selectedVector || "unchanged"} | TFs=${newConfig.timeframes?.join(",") || "unchanged"}`);
+    console.log(`[HOOK] ⛔ Engine will ONLY scan within these boundaries`);
   }, []);
 
   // === SCAN LOOP ===

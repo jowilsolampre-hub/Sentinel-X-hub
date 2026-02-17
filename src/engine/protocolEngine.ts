@@ -69,6 +69,14 @@ const mapTimeframeOption = (tf: TimeframeOption): Timeframe => {
   return map[tf];
 };
 
+// Map asset to its owning vector
+const getAssetVector = (asset: string): Vector => {
+  for (const [vector, assets] of Object.entries(ASSET_POOLS)) {
+    if (assets.includes(asset)) return vector as Vector;
+  }
+  return "Forex";
+};
+
 const getAssetsForConfig = (config: ScanConfig): string[] => {
   // If specific pairs selected, use those
   if (config.selectedPairs && config.selectedPairs.length > 0) {
@@ -79,12 +87,11 @@ const getAssetsForConfig = (config: ScanConfig): string[] => {
   let assets: string[] = [];
 
   if (config.marketCategory === "PO_OTC" || config.marketCategory === "QUOTEX_OTC") {
-    // OTC markets - use OTC pairs
+    // OTC markets - use OTC pairs ONLY
     assets = ASSET_POOLS["OTC"] || [];
-  } else {
-    // REAL markets
+  } else if (config.marketCategory === "REAL") {
+    // REAL markets only - never mix with OTC
     if (config.vector === "Hybrid") {
-      // All real vectors
       assets = [
         ...ASSET_POOLS["Forex"],
         ...ASSET_POOLS["Indices"],
@@ -202,7 +209,8 @@ export const protocolScan = async (
     pendingSignals: []
   };
 
-  console.log(`[PROTOCOL] Starting scan: ${config.marketCategory} | ${config.vector} | TFs: ${config.timeframes.join(", ")} | Multi-TF: ${isMultiTf}`);
+  console.log(`[PROTOCOL] ⚡ STRICT SCAN: Market=${config.marketCategory} | Vector=${config.vector} | TFs=[${config.timeframes.join(",")}] ONLY | Multi-TF: ${isMultiTf}`);
+  console.log(`[PROTOCOL] ⛔ Will NOT scan outside selected TF/market boundaries`);
 
   // Get assets to scan
   const assets = getAssetsForConfig(config);
@@ -227,9 +235,11 @@ export const protocolScan = async (
     onProgress?.(progress, "ANALYZING");
 
     for (const asset of batch) {
+      // Determine asset's actual vector
+      const assetVector = config.vector === "Hybrid" ? getAssetVector(asset) : config.vector as Vector;
+
       // Skip cooldown assets
-      const vector = config.vector === "Hybrid" ? "Forex" : config.vector as Vector;
-      if (isAssetOnCooldown(asset, vector)) {
+      if (isAssetOnCooldown(asset, assetVector)) {
         continue;
       }
 
@@ -282,7 +292,7 @@ export const protocolScan = async (
         const signal: Signal = {
           id: generateId(),
           asset,
-          vector: config.vector === "Hybrid" ? "Forex" : config.vector as Vector,
+          vector: assetVector,
           marketType,
           strategy: `${strategy.name} (${validation.totalScore}/9)`,
           direction,
@@ -300,8 +310,7 @@ export const protocolScan = async (
       }
 
       // Set cooldown for asset (once per asset, not per TF)
-      const vectorKey = config.vector === "Hybrid" ? "Forex" : config.vector as Vector;
-      setAssetCooldown(asset, vectorKey, "COMPLETION", generateId());
+      setAssetCooldown(asset, assetVector, "COMPLETION", generateId());
     }
 
     // Batch delay
