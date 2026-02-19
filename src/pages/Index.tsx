@@ -247,7 +247,7 @@ const Index = () => {
               onSelect={setSelectedTimeframes} 
             />
             <FloatingWindowButton />
-            <ScreenCaptureScanner />
+            <ScreenCaptureScanner market={marketCategory} vector={selectedVector} timeframe={selectedTimeframes[0]} />
           </div>
         </div>
 
