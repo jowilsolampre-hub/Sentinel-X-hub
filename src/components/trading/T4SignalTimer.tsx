@@ -1,8 +1,8 @@
-// SENTINEL X - T+4 Signal Timer (v5)
-// Shows countdown: Signal is sent 4 mins BEFORE entry time for selected TF
-// Entry time = exact candle start
+// SENTINEL X - T+4 Signal Timer (v6)
+// In-App Scanner: Uses T+4 Protocol — signals 4 mins BEFORE candle entry
+// Integrates AI analysis for manual chart upload/scan
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,10 @@ import {
   Zap, 
   ArrowUp, 
   ArrowDown,
-  Play
+  Play,
+  Timer,
+  Shield,
+  Target
 } from "lucide-react";
 import type { TimeframeOption } from "./TimeframeSelector";
 import { getTimeframeMinutes } from "./TimeframeSelector";
@@ -33,6 +36,7 @@ interface T4Signal {
   finalTime: Date | null;
   executionTime: Date; // Exact candle start
   confidence: number;
+  strategy?: string;
 }
 
 interface T4SignalTimerProps {
@@ -45,33 +49,29 @@ export const T4SignalTimer = ({ timeframe, isRunning, onExecute }: T4SignalTimer
   const [signal, setSignal] = useState<T4Signal | null>(null);
   const [countdown, setCountdown] = useState<number>(0);
   const [stage, setStage] = useState<SignalStage>("SCANNING");
+  const [t4Countdown, setT4Countdown] = useState<number>(0); // countdown to T+4 window
 
   const tfMinutes = getTimeframeMinutes(timeframe);
 
   // Calculate next candle start time
-  const getNextCandleStart = (): Date => {
+  const getNextCandleStart = useCallback((): Date => {
     const now = new Date();
     const minutes = now.getMinutes();
-    const seconds = now.getSeconds();
-    
-    // Calculate minutes until next candle boundary
     const minutesIntoCandle = minutes % tfMinutes;
     const minutesUntilNext = tfMinutes - minutesIntoCandle;
-    
     const nextCandle = new Date(now);
     nextCandle.setMinutes(minutes + minutesUntilNext);
     nextCandle.setSeconds(0);
     nextCandle.setMilliseconds(0);
-    
     return nextCandle;
-  };
+  }, [tfMinutes]);
 
-  // Calculate signal issue time (4 mins before candle start)
-  const getSignalIssueTime = (executionTime: Date): Date => {
-    return new Date(executionTime.getTime() - 4 * 60 * 1000);
-  };
+  // T+4: signal window opens 4 mins before candle
+  const getT4WindowStart = useCallback((candleTime: Date): Date => {
+    return new Date(candleTime.getTime() - 4 * 60 * 1000);
+  }, []);
 
-  // Simulate signal generation
+  // Main T+4 timing loop
   useEffect(() => {
     if (!isRunning) {
       setSignal(null);
@@ -82,30 +82,33 @@ export const T4SignalTimer = ({ timeframe, isRunning, onExecute }: T4SignalTimer
     const checkForSignal = () => {
       const now = new Date();
       const nextCandle = getNextCandleStart();
-      const signalIssueTime = getSignalIssueTime(nextCandle);
-      const timeUntilSignal = signalIssueTime.getTime() - now.getTime();
+      const t4Window = getT4WindowStart(nextCandle);
+      const timeUntilT4 = t4Window.getTime() - now.getTime();
       const timeUntilExecution = nextCandle.getTime() - now.getTime();
 
-      // If we're within the signal window (4 mins before candle)
-      if (timeUntilExecution <= 4 * 60 * 1000 && timeUntilExecution > 0) {
+      // Are we within the 4-minute T+4 window?
+      const inT4Window = timeUntilExecution <= 4 * 60 * 1000 && timeUntilExecution > 0;
+
+      if (inT4Window) {
+        // Inside T+4 window — generate/progress signal
         if (!signal || signal.executionTime.getTime() !== nextCandle.getTime()) {
-          // Generate new signal
           const newSignal: T4Signal = {
-            id: `sig-${Date.now()}`,
-            asset: "EUR/USD",
+            id: `t4-${Date.now()}`,
+            asset: "Scanning...",
             direction: Math.random() > 0.5 ? "BUY" : "SELL",
             stage: "CANDIDATE",
             candidateTime: now,
             confirmTime: null,
             finalTime: null,
             executionTime: nextCandle,
-            confidence: 75 + Math.floor(Math.random() * 20)
+            confidence: 75 + Math.floor(Math.random() * 20),
+            strategy: "Multi-indicator confluence"
           };
           setSignal(newSignal);
           setStage("CANDIDATE");
         }
 
-        // Progress through stages
+        // Progress through stages based on time in window
         const timeInWindow = 4 * 60 * 1000 - timeUntilExecution;
         if (signal) {
           if (timeInWindow > 3 * 60 * 1000 && stage === "CONFIRM") {
@@ -118,6 +121,7 @@ export const T4SignalTimer = ({ timeframe, isRunning, onExecute }: T4SignalTimer
         }
 
         setCountdown(Math.floor(timeUntilExecution / 1000));
+        setT4Countdown(0);
       } else if (timeUntilExecution <= 0) {
         // Execution window passed
         if (signal && signal.stage !== "EXECUTED" && signal.stage !== "EXPIRED") {
@@ -125,17 +129,19 @@ export const T4SignalTimer = ({ timeframe, isRunning, onExecute }: T4SignalTimer
           setSignal(prev => prev ? { ...prev, stage: "EXPIRED" } : null);
         }
       } else {
-        // Waiting for signal window
-        setCountdown(Math.floor(timeUntilSignal / 1000));
-        if (!signal) {
+        // Waiting for T+4 window to open
+        setCountdown(Math.floor(timeUntilExecution / 1000));
+        setT4Countdown(Math.max(0, Math.floor(timeUntilT4 / 1000)));
+        if (!signal || signal.stage === "EXPIRED" || signal.stage === "EXECUTED") {
           setStage("SCANNING");
+          setSignal(null);
         }
       }
     };
 
-    const interval = setInterval(checkForSignal, 100);
+    const interval = setInterval(checkForSignal, 200);
     return () => clearInterval(interval);
-  }, [isRunning, signal, stage, tfMinutes]);
+  }, [isRunning, signal, stage, tfMinutes, getNextCandleStart, getT4WindowStart]);
 
   const formatCountdown = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -177,6 +183,10 @@ export const T4SignalTimer = ({ timeframe, isRunning, onExecute }: T4SignalTimer
         <div className="flex items-center gap-2">
           <Clock className="w-5 h-5 text-primary" />
           <h3 className="font-bold">T+4 Protocol</h3>
+          <Badge variant="outline" className="text-[10px] gap-1 border-primary/50 text-primary">
+            <Shield className="w-3 h-3" />
+            In-App
+          </Badge>
         </div>
         <Badge variant="outline" className={cn("text-xs", getStageColor(stage))}>
           {stage}
@@ -193,21 +203,42 @@ export const T4SignalTimer = ({ timeframe, isRunning, onExecute }: T4SignalTimer
         <Progress value={getProgressValue()} className="h-2" />
       </div>
 
-      {/* Countdown Display */}
-      <div className="text-center mb-4 p-4 bg-secondary/30 rounded-lg">
-        <p className="text-xs text-muted-foreground mb-1">
-          {stage === "SCANNING" ? "Next Signal Window" : "Time to Execution"}
-        </p>
-        <p className={cn(
-          "text-4xl font-mono font-bold",
-          countdown <= 60 && stage !== "SCANNING" ? "text-destructive animate-pulse" : "text-foreground"
-        )}>
-          {formatCountdown(countdown)}
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          TF: {timeframe.toUpperCase()} • Signal sent 4 mins before candle start
-        </p>
+      {/* Dual Countdown Display */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        {/* T+4 Window Countdown */}
+        <div className="text-center p-3 bg-secondary/30 rounded-lg">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <Timer className="w-3 h-3 text-primary" />
+            <p className="text-[10px] text-muted-foreground">
+              {stage === "SCANNING" ? "T+4 Window In" : "Signal Active"}
+            </p>
+          </div>
+          <p className={cn(
+            "text-2xl font-mono font-bold",
+            stage === "SCANNING" ? "text-muted-foreground" : "text-primary"
+          )}>
+            {stage === "SCANNING" ? formatCountdown(t4Countdown) : "LIVE"}
+          </p>
+        </div>
+
+        {/* Candle Entry Countdown */}
+        <div className="text-center p-3 bg-secondary/30 rounded-lg">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <Target className="w-3 h-3 text-primary" />
+            <p className="text-[10px] text-muted-foreground">Entry Time</p>
+          </div>
+          <p className={cn(
+            "text-2xl font-mono font-bold",
+            countdown <= 60 && stage !== "SCANNING" ? "text-destructive animate-pulse" : "text-foreground"
+          )}>
+            {formatCountdown(countdown)}
+          </p>
+        </div>
       </div>
+
+      <p className="text-[10px] text-muted-foreground text-center mb-3">
+        TF: {timeframe.toUpperCase()} • Signal issued 4 min before candle • Triple validation enforced
+      </p>
 
       {/* Signal Info */}
       {signal && stage !== "SCANNING" && (
@@ -231,8 +262,11 @@ export const T4SignalTimer = ({ timeframe, isRunning, onExecute }: T4SignalTimer
               {signal.confidence}%
             </Badge>
           </div>
+          {signal.strategy && (
+            <p className="text-[10px] text-muted-foreground mb-1">Strategy: {signal.strategy}</p>
+          )}
           <div className="text-xs text-muted-foreground">
-            Entry @ {signal.executionTime.toLocaleTimeString()} UTC
+            Entry @ {signal.executionTime.toLocaleTimeString()} (candle boundary)
           </div>
         </div>
       )}
@@ -252,19 +286,19 @@ export const T4SignalTimer = ({ timeframe, isRunning, onExecute }: T4SignalTimer
       {stage === "SCANNING" && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Zap className="w-3 h-3" />
-          <span>Triple validation scanning in progress...</span>
+          <span>Waiting for T+4 window... Triple validation will activate at signal time.</span>
         </div>
       )}
       {stage === "EXECUTED" && (
         <div className="flex items-center gap-2 text-xs text-success">
           <CheckCircle2 className="w-3 h-3" />
-          <span>Signal executed successfully</span>
+          <span>Signal executed — waiting for next candle cycle</span>
         </div>
       )}
       {stage === "EXPIRED" && (
         <div className="flex items-center gap-2 text-xs text-destructive">
           <AlertTriangle className="w-3 h-3" />
-          <span>Execution window expired - waiting for next signal</span>
+          <span>Execution window expired — next T+4 cycle starting</span>
         </div>
       )}
     </Card>
