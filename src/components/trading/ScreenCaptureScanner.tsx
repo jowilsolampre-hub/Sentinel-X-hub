@@ -1,27 +1,15 @@
 // SENTINEL X - Screen Capture Scanner (Windows Overlay Mode)
-// Captures screen/window, analyzes chart via AI — signals for NEXT candle opening
-// Uses full indicator protocol from PDF
+// Disciplined, confluence-based, entry-timing expert scanner
+// Full 14-point guru protocol with 3-gate system
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Monitor,
-  Camera,
-  Loader2,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  X,
-  Play,
-  Square,
-  GripVertical,
-  Maximize2,
-  Minimize2,
-  Clock,
-  AlertTriangle,
-  Timer,
+  Monitor, Camera, Loader2, TrendingUp, TrendingDown, Minus, X, Play, Square,
+  GripVertical, Maximize2, Minimize2, Clock, AlertTriangle, Timer, Shield,
+  Target, Zap, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,9 +22,15 @@ interface AnalysisResult {
   analysis: string;
   direction: "BUY" | "SELL" | "NEUTRAL";
   confidence: number;
-  signalStrength: "high" | "medium" | "low" | "wait";
+  signalStrength: "high" | "medium" | "low" | "wait" | "conditional";
+  setupGrade?: string;
+  entryAction?: string;
+  confluenceScore?: number;
+  executionQuality?: number;
+  marketRegime?: string;
   strategyUsed?: string;
-  indicatorsDetected?: string;
+  expirySuggestion?: string;
+  triggerCondition?: string;
   timestamp: string;
 }
 
@@ -68,7 +62,6 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
 
   const tfMinutes = getTimeframeMinutes(timeframe || "5m");
 
-  // Calculate next candle start
   const getNextCandleStart = useCallback((): Date => {
     const now = new Date();
     const minutes = now.getMinutes();
@@ -81,7 +74,6 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
     return nextCandle;
   }, [tfMinutes]);
 
-  // Countdown to next candle
   useEffect(() => {
     if (!isCapturing) return;
     const timer = setInterval(() => {
@@ -94,59 +86,35 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
 
   const startCapture = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: "never" } as any,
-        audio: false,
-      });
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "never" } as any, audio: false });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
       setIsCapturing(true);
       toast.success("Screen capture started — position over your chart");
       stream.getVideoTracks()[0].onended = () => stopCapture();
-    } catch (err) {
-      console.error("Screen capture error:", err);
-      toast.error("Screen capture failed — please allow screen sharing");
-    }
+    } catch { toast.error("Screen capture failed — please allow screen sharing"); }
   }, []);
 
   const stopCapture = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
+    if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
     if (videoRef.current) videoRef.current.srcObject = null;
-    setIsCapturing(false);
-    setAutoScan(false);
-    if (autoScanTimerRef.current) {
-      clearInterval(autoScanTimerRef.current);
-      autoScanTimerRef.current = null;
-    }
+    setIsCapturing(false); setAutoScan(false);
+    if (autoScanTimerRef.current) { clearInterval(autoScanTimerRef.current); autoScanTimerRef.current = null; }
   }, []);
 
   const grabFrame = useCallback((): string | null => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
+    const video = videoRef.current; const canvas = canvasRef.current;
     if (!video || !canvas || !video.videoWidth) return null;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d"); if (!ctx) return null;
     ctx.drawImage(video, 0, 0);
-    return canvas.toDataURL("image/png", 0.85);
+    return canvas.toDataURL("image/png", 0.9);
   }, []);
 
   const analyzeFrame = useCallback(async () => {
     const frame = grabFrame();
-    if (!frame) {
-      toast.error("No frame — start screen capture first");
-      return;
-    }
-    setIsAnalyzing(true);
-    setResult(null);
-
+    if (!frame) { toast.error("No frame — start screen capture first"); return; }
+    setIsAnalyzing(true); setResult(null);
     const nextCandle = getNextCandleStart();
 
     try {
@@ -160,115 +128,119 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
           marketContext: `WINDOWS OVERLAY | Next candle: ${nextCandle.toLocaleTimeString()} | Market: ${market || "REAL"} | Vector: ${vector || "Hybrid"} | TF: ${timeframe || "5m"}`,
         },
       });
-
       if (error) throw error;
       if (data.error) throw new Error(data.error);
-
       setResult(data);
 
-      // Audio + toast for high-confidence signals
-      if (data.direction !== "NEUTRAL" && data.confidence >= 80) {
-        toast.success(
-          `🎯 ${data.direction === "BUY" ? ">>> ENTER UP <<<" : ">>> ENTER DOWN <<<"} — ${data.confidence}% | Entry @ ${nextCandle.toLocaleTimeString()}`,
-          { duration: 15000 }
-        );
-        // Beep alert
+      // Audio + toast for signals
+      if (data.signalStrength === "high" || data.signalStrength === "medium") {
+        const actionText = data.entryAction?.includes("NEXT_CANDLE") ? "ENTER NEXT CANDLE" : data.entryAction?.includes("WAIT") ? "WAIT FOR CONFIRMATION" : data.direction === "BUY" ? ">>> ENTER UP <<<" : ">>> ENTER DOWN <<<";
+        toast.success(`🎯 ${actionText} — ${data.confidence}% [${data.setupGrade}] | ${data.entryAction}`, { duration: 15000 });
         try {
           const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
+          const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+          osc.connect(gain); gain.connect(audioCtx.destination);
           osc.frequency.value = data.direction === "BUY" ? 880 : 440;
           osc.type = "sine";
           gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
           gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
-          osc.start(audioCtx.currentTime);
-          osc.stop(audioCtx.currentTime + 0.8);
+          osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.8);
         } catch {}
+      } else if (data.signalStrength === "conditional") {
+        toast.info(`⏳ CONDITIONAL: ${data.entryAction} — ${data.confidence}%`, { duration: 10000 });
       } else if (data.direction === "NEUTRAL") {
-        toast.info("NO CLEAR TRADE — WAIT");
+        toast.info("NO TRADE — All 4 fallback modes checked");
       } else {
-        toast.info(`${data.direction} (${data.confidence}%) — weak confluence`);
+        toast.info(`${data.direction} (${data.confidence}%) — low quality, consider waiting`);
       }
     } catch (err) {
       console.error("Analysis error:", err);
       toast.error(err instanceof Error ? err.message : "Analysis failed");
-    } finally {
-      setIsAnalyzing(false);
-    }
+    } finally { setIsAnalyzing(false); }
   }, [grabFrame, getNextCandleStart, market, vector, timeframe]);
 
   const toggleAutoScan = useCallback(() => {
     if (autoScan) {
       setAutoScan(false);
-      if (autoScanTimerRef.current) {
-        clearInterval(autoScanTimerRef.current);
-        autoScanTimerRef.current = null;
-      }
+      if (autoScanTimerRef.current) { clearInterval(autoScanTimerRef.current); autoScanTimerRef.current = null; }
       toast.info("Auto-scan stopped");
     } else {
-      if (!isCapturing) {
-        toast.error("Start screen capture first");
-        return;
-      }
-      setAutoScan(true);
-      analyzeFrame();
+      if (!isCapturing) { toast.error("Start screen capture first"); return; }
+      setAutoScan(true); analyzeFrame();
       autoScanTimerRef.current = setInterval(() => analyzeFrame(), autoInterval * 1000);
       toast.success(`Auto-scan every ${autoInterval}s`);
     }
   }, [autoScan, isCapturing, analyzeFrame, autoInterval]);
 
-  useEffect(() => {
-    return () => stopCapture();
-  }, [stopCapture]);
+  useEffect(() => { return () => stopCapture(); }, [stopCapture]);
 
-  // Drag logic
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    setIsDragging(true);
-    setDragOffset({ x: e.clientX - position.x, y: e.clientY - position.y });
+    setIsDragging(true); setDragOffset({ x: e.clientX - position.x, y: e.clientY - position.y });
   }, [position]);
 
   useEffect(() => {
     if (!isDragging) return;
     const onMove = (e: MouseEvent) => setPosition({ x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y });
     const onUp = () => setIsDragging(false);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
+    window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, [isDragging, dragOffset]);
 
-  const formatCountdown = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const formatCountdown = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
+
+  // Grade color helper
+  const getGradeColor = (grade?: string) => {
+    if (grade === "A_SETUP") return "text-success";
+    if (grade === "B_SETUP") return "text-primary";
+    if (grade === "C_SETUP") return "text-warning";
+    return "text-destructive";
   };
 
-  // Color helpers
+  const getGradeBg = (grade?: string) => {
+    if (grade === "A_SETUP") return "bg-success/15 border-success/50";
+    if (grade === "B_SETUP") return "bg-primary/15 border-primary/50";
+    if (grade === "C_SETUP") return "bg-warning/15 border-warning/50";
+    return "bg-destructive/15 border-destructive/50";
+  };
+
   const getSignalColor = () => {
     if (!result) return "";
     if (result.signalStrength === "high") return "text-success";
     if (result.signalStrength === "medium") return "text-success";
-    if (result.signalStrength === "wait") return "text-warning";
+    if (result.signalStrength === "conditional") return "text-warning";
+    if (result.signalStrength === "wait") return "text-muted-foreground";
     if (result.direction === "SELL") return "text-destructive";
     return "text-muted-foreground";
   };
 
   const getSignalBg = () => {
     if (!result) return "";
+    if (result.signalStrength === "conditional") return "bg-warning/15 border-warning/40";
     if (result.direction === "BUY") return "bg-success/15 border-success/40";
     if (result.direction === "SELL") return "bg-destructive/15 border-destructive/40";
-    return "bg-warning/15 border-warning/40";
+    return "bg-secondary/30 border-border/50";
   };
 
   const getSignalText = () => {
     if (!result) return "";
+    if (result.direction === "NEUTRAL") return "NO TRADE";
+    if (result.entryAction?.includes("NEXT_CANDLE")) return `${result.direction} — NEXT CANDLE`;
+    if (result.entryAction?.includes("WAIT")) return `${result.direction} — WAIT`;
+    if (result.entryAction?.includes("BREAK")) return `${result.direction} — ON BREAK`;
+    if (result.entryAction?.includes("RETEST")) return `${result.direction} — ON RETEST`;
     if (result.direction === "BUY") return ">>> ENTER UP <<<";
     if (result.direction === "SELL") return ">>> ENTER DOWN <<<";
-    return "NO CLEAR TRADE — WAIT";
+    return "NO TRADE";
+  };
+
+  const getEntryIcon = () => {
+    if (!result) return null;
+    if (result.entryAction === "ENTER_NOW") return <Zap className="w-5 h-5" />;
+    if (result.entryAction?.includes("WAIT") || result.entryAction?.includes("NEXT")) return <Clock className="w-5 h-5" />;
+    if (result.entryAction?.includes("BREAK")) return <Target className="w-5 h-5" />;
+    if (result.direction === "BUY") return <TrendingUp className="w-5 h-5" />;
+    if (result.direction === "SELL") return <TrendingDown className="w-5 h-5" />;
+    return <Minus className="w-5 h-5" />;
   };
 
   if (!isOpen) {
@@ -285,28 +257,18 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
       <video ref={videoRef} className="hidden" muted playsInline />
       <canvas ref={canvasRef} className="hidden" />
 
-      <div
-        className="fixed z-50 shadow-2xl"
-        style={{ left: position.x, top: position.y, width: isMinimized ? 300 : 440, transition: isDragging ? "none" : "width 0.2s ease" }}
-      >
+      <div className="fixed z-50 shadow-2xl" style={{ left: position.x, top: position.y, width: isMinimized ? 300 : 460, transition: isDragging ? "none" : "width 0.2s ease" }}>
         <Card className="border border-primary/40 bg-card overflow-hidden">
           {/* Title bar */}
-          <div
-            className="flex items-center justify-between px-3 py-2 bg-primary/10 border-b border-border/50 cursor-grab active:cursor-grabbing select-none"
-            onMouseDown={handleMouseDown}
-          >
+          <div className="flex items-center justify-between px-3 py-2 bg-primary/10 border-b border-border/50 cursor-grab active:cursor-grabbing select-none" onMouseDown={handleMouseDown}>
             <div className="flex items-center gap-2">
               <GripVertical className="w-4 h-4 text-muted-foreground" />
-              <Monitor className="w-4 h-4 text-primary" />
-              <span className="text-xs font-bold">AI Float Trader</span>
+              <Shield className="w-4 h-4 text-primary" />
+              <span className="text-xs font-bold">SENTINEL X — Guru Scanner</span>
               {isCapturing && (
                 <Badge variant="outline" className="text-[10px] h-4 gap-1 border-success/50 text-success">
-                  <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                  LIVE
+                  <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> LIVE
                 </Badge>
-              )}
-              {autoScan && (
-                <Badge variant="outline" className="text-[10px] h-4 border-primary/50 text-primary">AUTO</Badge>
               )}
             </div>
             <div className="flex items-center gap-1">
@@ -320,13 +282,13 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
           </div>
 
           {!isMinimized && (
-            <div className="p-3 space-y-3 max-h-[80vh] overflow-y-auto">
-              {/* Scan context badges */}
+            <div className="p-3 space-y-3 max-h-[85vh] overflow-y-auto">
+              {/* Scan context */}
               <div className="flex flex-wrap gap-1.5 text-[10px]">
                 <Badge variant="secondary" className="h-5">{market || "REAL"}</Badge>
                 <Badge variant="secondary" className="h-5">{vector || "Hybrid"}</Badge>
                 <Badge variant="secondary" className="h-5">TF: {timeframe || "5m"}</Badge>
-                <Badge variant="outline" className="h-5 text-primary border-primary/50">Next Candle Mode</Badge>
+                <Badge variant="outline" className="h-5 text-primary border-primary/50">3-Gate • Guru Protocol</Badge>
               </div>
 
               {/* Next Candle Countdown */}
@@ -348,20 +310,10 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
               {/* Capture preview */}
               {isCapturing && (
                 <div className="relative rounded-md overflow-hidden border border-border/50 bg-secondary/30">
-                  <video
-                    ref={(el) => {
-                      if (el && streamRef.current) {
-                        el.srcObject = streamRef.current;
-                        el.play().catch(() => {});
-                      }
-                    }}
-                    className="w-full h-28 object-contain"
-                    muted playsInline
-                  />
+                  <video ref={(el) => { if (el && streamRef.current) { el.srcObject = streamRef.current; el.play().catch(() => {}); } }} className="w-full h-28 object-contain" muted playsInline />
                   <div className="absolute top-1 right-1">
                     <Badge className="text-[10px] bg-destructive/80">
-                      <span className="w-1.5 h-1.5 rounded-full bg-destructive-foreground animate-pulse mr-1" />
-                      REC
+                      <span className="w-1.5 h-1.5 rounded-full bg-destructive-foreground animate-pulse mr-1" /> REC
                     </Badge>
                   </div>
                 </div>
@@ -371,27 +323,20 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
               <div className="flex flex-wrap gap-2">
                 {!isCapturing ? (
                   <Button size="sm" className="gap-1.5 flex-1" onClick={startCapture}>
-                    <Monitor className="w-3.5 h-3.5" />
-                    Start Capture
+                    <Monitor className="w-3.5 h-3.5" /> Start Capture
                   </Button>
                 ) : (
                   <>
                     <Button size="sm" variant="destructive" className="gap-1.5" onClick={stopCapture}>
-                      <Square className="w-3 h-3" />
-                      Stop
+                      <Square className="w-3 h-3" /> Stop
                     </Button>
                     <Button size="sm" className="gap-1.5 flex-1" onClick={analyzeFrame} disabled={isAnalyzing}>
                       {isAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
                       {isAnalyzing ? "Analyzing..." : "Scan Now"}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant={autoScan ? "destructive" : "outline"}
-                      className="gap-1.5"
-                      onClick={toggleAutoScan}
-                    >
+                    <Button size="sm" variant={autoScan ? "destructive" : "outline"} className="gap-1.5" onClick={toggleAutoScan}>
                       {autoScan ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                      {autoScan ? "Stop Auto" : "Auto"}
+                      {autoScan ? "Stop" : "Auto"}
                     </Button>
                   </>
                 )}
@@ -400,12 +345,9 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
               {/* Auto-scan interval */}
               {isCapturing && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="w-3 h-3" />
-                  <span>Interval:</span>
+                  <Clock className="w-3 h-3" /> <span>Interval:</span>
                   {[15, 30, 60].map((s) => (
-                    <Button key={s} variant={autoInterval === s ? "default" : "ghost"} size="sm" className="h-5 px-2 text-[10px]" onClick={() => setAutoInterval(s)}>
-                      {s}s
-                    </Button>
+                    <Button key={s} variant={autoInterval === s ? "default" : "ghost"} size="sm" className="h-5 px-2 text-[10px]" onClick={() => setAutoInterval(s)}>{s}s</Button>
                   ))}
                 </div>
               )}
@@ -416,45 +358,74 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
                   {/* Main signal banner */}
                   <div className={`p-3 rounded-lg border-2 text-center ${getSignalBg()}`}>
                     <div className="flex items-center justify-center gap-2 mb-1">
-                      {result.direction === "BUY" ? (
-                        <TrendingUp className={`w-6 h-6 ${getSignalColor()}`} />
-                      ) : result.direction === "SELL" ? (
-                        <TrendingDown className={`w-6 h-6 ${getSignalColor()}`} />
-                      ) : (
-                        <AlertTriangle className={`w-6 h-6 ${getSignalColor()}`} />
-                      )}
-                      <span className={`font-black text-lg ${getSignalColor()}`}>
-                        {getSignalText()}
-                      </span>
+                      <span className={getSignalColor()}>{getEntryIcon()}</span>
+                      <span className={`font-black text-lg ${getSignalColor()}`}>{getSignalText()}</span>
                     </div>
-                    <span className={`font-mono text-2xl font-black ${getSignalColor()}`}>
-                      {result.confidence}%
-                    </span>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      Estimated Win Probability • Entry @ {getNextCandleStart().toLocaleTimeString()}
-                    </p>
+                    <span className={`font-mono text-2xl font-black ${getSignalColor()}`}>{result.confidence}%</span>
+                    {result.entryAction && result.entryAction !== "NO_TRADE" && (
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Entry @ {getNextCandleStart().toLocaleTimeString()} • Action: {result.entryAction}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Strategy used */}
+                  {/* Scores row */}
+                  <div className="grid grid-cols-4 gap-1.5 text-center">
+                    <div className={`p-1.5 rounded border ${getGradeBg(result.setupGrade)}`}>
+                      <p className="text-[9px] text-muted-foreground">Grade</p>
+                      <p className={`text-xs font-bold ${getGradeColor(result.setupGrade)}`}>{result.setupGrade?.replace("_", " ") || "—"}</p>
+                    </div>
+                    <div className="p-1.5 rounded border border-border/50 bg-secondary/30">
+                      <p className="text-[9px] text-muted-foreground">Confluence</p>
+                      <p className="text-xs font-bold">{result.confluenceScore ?? "—"}/10</p>
+                    </div>
+                    <div className="p-1.5 rounded border border-border/50 bg-secondary/30">
+                      <p className="text-[9px] text-muted-foreground">Exec Quality</p>
+                      <p className="text-xs font-bold">{result.executionQuality ?? "—"}/10</p>
+                    </div>
+                    <div className="p-1.5 rounded border border-border/50 bg-secondary/30">
+                      <p className="text-[9px] text-muted-foreground">Regime</p>
+                      <p className="text-[10px] font-medium truncate">{result.marketRegime || "—"}</p>
+                    </div>
+                  </div>
+
+                  {/* Strategy + Expiry */}
                   {result.strategyUsed && (
                     <div className="px-2 py-1.5 bg-primary/10 rounded border border-primary/20">
-                      <p className="text-[10px] text-muted-foreground">Strategy</p>
+                      <div className="flex items-center gap-1.5">
+                        <BarChart3 className="w-3 h-3 text-primary" />
+                        <p className="text-[10px] text-muted-foreground">Strategy</p>
+                      </div>
                       <p className="text-xs font-medium">{result.strategyUsed}</p>
                     </div>
                   )}
 
-                  {/* Analysis details */}
+                  {/* Trigger condition (for conditional entries) */}
+                  {result.triggerCondition && result.signalStrength === "conditional" && (
+                    <div className="px-2 py-1.5 bg-warning/10 rounded border border-warning/30">
+                      <div className="flex items-center gap-1.5">
+                        <Target className="w-3 h-3 text-warning" />
+                        <p className="text-[10px] text-warning font-medium">Trigger Condition</p>
+                      </div>
+                      <p className="text-xs">{result.triggerCondition}</p>
+                    </div>
+                  )}
+
+                  {result.expirySuggestion && (
+                    <div className="px-2 py-1 bg-secondary/30 rounded border border-border/30">
+                      <p className="text-[10px] text-muted-foreground">Expiry: <span className="text-foreground font-medium">{result.expirySuggestion}</span></p>
+                    </div>
+                  )}
+
+                  {/* Full analysis */}
                   <div className="p-2.5 bg-secondary/30 rounded-lg border border-border/50 max-h-48 overflow-y-auto">
-                    <pre className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap font-sans">
-                      {result.analysis}
-                    </pre>
+                    <pre className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap font-sans">{result.analysis}</pre>
                   </div>
 
                   <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                     <span>{new Date(result.timestamp).toLocaleTimeString()}</span>
                     <span className="flex items-center gap-1">
-                      <Monitor className="w-3 h-3" />
-                      SENTINEL X • 30+ Indicators
+                      <Shield className="w-3 h-3" /> SENTINEL X • 3-Gate Guru Protocol
                     </span>
                   </div>
                 </div>
@@ -464,8 +435,8 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
               {isAnalyzing && !result && (
                 <div className="flex flex-col items-center gap-2 py-4">
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                  <p className="text-xs text-muted-foreground">Full indicator scan (30+ indicators)...</p>
-                  <p className="text-[10px] text-muted-foreground">Confluence • SMC • Price Action • Oscillators</p>
+                  <p className="text-xs text-muted-foreground">3-Gate Guru Analysis...</p>
+                  <p className="text-[10px] text-muted-foreground">Regime → Location → Trigger → Entry Timing</p>
                 </div>
               )}
             </div>
@@ -477,14 +448,9 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
               {result ? (
                 <>
                   <div className="flex items-center gap-2">
-                    {result.direction === "BUY" ? (
-                      <TrendingUp className={`w-4 h-4 ${getSignalColor()}`} />
-                    ) : result.direction === "SELL" ? (
-                      <TrendingDown className={`w-4 h-4 ${getSignalColor()}`} />
-                    ) : (
-                      <Minus className={`w-4 h-4 ${getSignalColor()}`} />
-                    )}
+                    <span className={getSignalColor()}>{getEntryIcon()}</span>
                     <span className={`font-bold text-xs ${getSignalColor()}`}>{getSignalText()}</span>
+                    {result.setupGrade && <Badge variant="outline" className={`text-[9px] h-4 ${getGradeColor(result.setupGrade)}`}>{result.setupGrade?.replace("_", " ")}</Badge>}
                   </div>
                   <span className={`font-mono text-sm font-bold ${getSignalColor()}`}>{result.confidence}%</span>
                 </>
