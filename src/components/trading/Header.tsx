@@ -2,6 +2,7 @@
 
 import { SessionIndicator } from "./SessionIndicator";
 import { FloatingWindowButton } from "./FloatingWindowButton";
+import { SettingsPanel } from "./SettingsPanel";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Radio, Tv } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -65,6 +66,7 @@ export const Header = ({ tvConnected = false }: HeaderProps) => {
               </span>
             </div>
             <FloatingWindowButton />
+            <SettingsPanel />
             <SessionIndicator />
           </div>
         </div>
