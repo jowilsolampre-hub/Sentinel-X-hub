@@ -11,8 +11,81 @@ serve(async (req) => {
   }
 
   try {
-    const { imageBase64, marketContext, market, vector, timeframe, mode } = await req.json();
-    
+    const body = await req.json();
+    const { imageBase64, marketContext, market, vector, timeframe, mode } = body;
+
+    // === ASSISTANT CHAT MODE ===
+    if (mode === "assistant_chat") {
+      const { message, context, history } = body;
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+      const now = new Date();
+      const utcHour = now.getUTCHours();
+      let activeSession = "Off-Hours";
+      if (utcHour >= 0 && utcHour < 8) activeSession = "Asia/Tokyo";
+      if (utcHour >= 7 && utcHour < 9) activeSession = "London Open";
+      if (utcHour >= 8 && utcHour < 12) activeSession = "London";
+      if (utcHour >= 12 && utcHour < 13) activeSession = "London/NY Overlap";
+      if (utcHour >= 13 && utcHour < 17) activeSession = "New York";
+      if (utcHour >= 17 && utcHour < 21) activeSession = "New York (late)";
+      if (utcHour >= 21 || utcHour < 0) activeSession = "Sydney/Early Asia";
+      const zambiaTime = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+
+      const chatSystemPrompt = `You are DASOMTMFX, an elite AI trading mentor built into the SENTINEL X trading system.
+
+PERSONALITY: Calm, precise, confident, honest. Veteran trader mentor, not a hype bot.
+- Never claim guaranteed wins. Focus on setup quality, timing, risk, confirmation conditions.
+- Be practical, chart-relevant, and actionable.
+- Use Zambia time (UTC+2) for session references. Current: ${zambiaTime} ZMT, Session: ${activeSession}
+
+USER CONTEXT: ${context || "No specific context"}
+
+CAPABILITIES:
+- Indicator suggestion with exact periods/settings and what each confirms
+- 5 indicator stacks: A (Trend), B (Range/Reversal), C (Breakout), D (Fast Momentum), E (Clean PA)
+- Pair/session recommendations for Binary/OTC and Forex
+- Setup quality grading (A_SETUP/B_SETUP/C_SETUP)
+- Entry timing coaching (candle-state awareness, anti-late-entry)
+- Risk discipline: overtrade protection, loss streak coaching
+- Session-aware analysis (Asia/London/NY/Overlap)
+
+RESPONSE RULES:
+- Keep answers concise: 2-4 key points max unless user asks for detail
+- Use markdown formatting
+- Be specific (exact indicator settings, exact conditions)
+- Always mention the relevant session and time context
+- If asked about indicators, give the FULL stack with periods AND what each confirms
+- If asked about pairs, suggest 3-5 pairs with reason for each`;
+
+      const messages = [
+        { role: "system", content: chatSystemPrompt },
+        ...(history || []).map((m: { role: string; content: string }) => ({ role: m.role, content: m.content })),
+        { role: "user", content: message }
+      ];
+
+      const chatResponse = await fetch("https://api.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages,
+          temperature: 0.3,
+          max_tokens: 1000
+        })
+      });
+
+      if (!chatResponse.ok) throw new Error(`Chat API error: ${chatResponse.status}`);
+      const chatData = await chatResponse.json();
+      const reply = chatData.choices?.[0]?.message?.content || "I couldn't process that. Please try again.";
+
+      return new Response(
+        JSON.stringify({ reply }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // === CHART ANALYSIS MODE (existing) ===
     if (!imageBase64) {
       return new Response(
         JSON.stringify({ error: "No image provided" }),

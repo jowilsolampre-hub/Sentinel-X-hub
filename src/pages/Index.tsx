@@ -27,6 +27,7 @@ import { AITrendScanner } from "@/components/trading/AITrendScanner";
 import { PerformanceDashboard } from "@/components/trading/PerformanceDashboard";
 import { FloatingWindowButton } from "@/components/trading/FloatingWindowButton";
 import { ScreenCaptureScanner } from "@/components/trading/ScreenCaptureScanner";
+import { DasomtmfxAssistant } from "@/components/assistant/DasomtmfxAssistant";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -534,6 +535,21 @@ const Index = () => {
           </div>
         </div>
       </footer>
+
+      {/* DASOMTMFX AI Assistant */}
+      <DasomtmfxAssistant 
+        context={{
+          pair: selectedBroker || "Not selected",
+          timeframe: selectedTimeframes[0],
+          marketMode: marketCategory,
+          scanStatus: isScanning ? "analyzing" : isRunning ? "running" : "idle",
+          lastSignal: latestPendingSignal?.direction,
+          setupGrade: undefined,
+          confidence: undefined,
+          session: currentSession,
+          signalDirection: latestPendingSignal?.direction === "BUY" || latestPendingSignal?.direction === "SELL" ? latestPendingSignal.direction as "BUY" | "SELL" : null,
+        }}
+      />
     </div>
   );
 };
