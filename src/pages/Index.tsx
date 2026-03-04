@@ -536,11 +536,12 @@ const Index = () => {
         </div>
       </footer>
 
-      {/* DASOMTMFX AI Assistant - Connected to FULL app state */}
+      {/* DASOMTMFX AI Assistant - MASTER BRAIN - Full app state + control */}
       <DasomtmfxAssistant 
         context={{
           pair: selectedBroker || "Not selected",
           timeframe: selectedTimeframes[0],
+          selectedTimeframes,
           marketMode: marketCategory,
           scanStatus: isScanning ? "analyzing" : isRunning ? "running" : "idle",
           lastSignal: latestPendingSignal?.direction,
@@ -548,7 +549,10 @@ const Index = () => {
           confidence: stats.winRate > 0 ? Math.round(stats.winRate) : undefined,
           session: currentSession,
           signalDirection: latestPendingSignal?.direction === "BUY" || latestPendingSignal?.direction === "SELL" ? latestPendingSignal.direction as "BUY" | "SELL" : null,
+          signals,
+          pendingAcknowledgment: pendingAcknowledgment || null,
           engineStatus: stats.engineStatus,
+          isRunning,
           isPaused,
           isScanning,
           scanPhase,
@@ -556,13 +560,40 @@ const Index = () => {
           winRate: stats.winRate,
           totalSignals: stats.totalSignals,
           pendingSignals: stats.pendingSignals,
+          executedSignals: stats.executedSignals,
           riskLocked: riskGate.manualLock,
           maxDailyTrades: riskGate.maxDailyTrades,
           currentDailyTrades: riskGate.currentDailyTrades,
           consecutiveLosses: riskGate.currentConsecutiveLosses,
+          maxConsecutiveLosses: riskGate.maxConsecutiveLosses,
+          currentDailyLoss: riskGate.currentDailyLoss,
+          maxDailyLoss: riskGate.maxDailyLoss,
+          activeCooldowns,
+          sessionLocked: sessionLock.isLocked,
+          sessionCanScan: sessionLock.canScan,
+          sessionBlockReason: sessionLock.scanBlockReason,
           selectedVector: selectedVector,
           tvConnected,
           selectedBroker: selectedBroker || undefined,
+        }}
+        actions={{
+          startEngine: handleStartEngine,
+          stopEngine: handleStopEngine,
+          pauseEngine: handlePauseEngine,
+          clearSignals: handleClearSignals,
+          clearAllHistory,
+          toggleRiskLock,
+          acknowledgeSignal: handleAcknowledgeSignal,
+          cancelSignal: handleCancelSignal,
+          setMarketCategory: (cat: string) => setMarketCategory(cat as MarketCategory),
+          setSelectedVector: (vec: string) => handleVectorChange(vec as VectorOption),
+          setSelectedTimeframes: (tfs: string[]) => setSelectedTimeframes(tfs as TimeframeOption[]),
+          setSelectedBroker: (b: string) => setSelectedBroker(b as AnyBroker),
+          setActiveTab: (tab: string) => {
+            // Programmatically click the tab
+            const tabEl = document.querySelector(`[data-state][value="${tab}"]`) as HTMLElement;
+            if (tabEl) tabEl.click();
+          },
         }}
       />
     </div>

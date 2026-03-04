@@ -1,42 +1,79 @@
-// DASOMTMFX - Floating 3D AI Robot Assistant (Full App State Connected)
+// DASOMTMFX - Master Brain AI Assistant (Full App Control)
 import { useState, useRef, useCallback, useEffect, Suspense } from "react";
 import { RobotScene, type RobotState } from "./RobotCharacter";
 import { ChatPanel } from "./ChatPanel";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, Minimize2, Maximize2, X, GripVertical } from "lucide-react";
+import type { Signal } from "@/types/trading";
 
+// Full app state the assistant can READ
 export interface AssistantContext {
+  // Market selection
   pair?: string;
   timeframe?: string;
   marketMode?: string;
-  scanStatus?: string;
-  lastSignal?: string;
-  setupGrade?: string;
-  confidence?: number;
-  session?: string;
-  signalDirection?: "BUY" | "SELL" | null;
-  // Extended full-app state
+  selectedVector?: string;
+  selectedBroker?: string;
+  selectedTimeframes?: string[];
+  // Engine state
   engineStatus?: string;
   isPaused?: boolean;
+  isRunning?: boolean;
   isScanning?: boolean;
   scanPhase?: string;
   scanProgress?: number;
+  // Signal state
+  signals?: Signal[];
+  lastSignal?: string;
+  signalDirection?: "BUY" | "SELL" | null;
+  setupGrade?: string;
+  confidence?: number;
+  pendingAcknowledgment?: Signal | null;
+  // Stats
   winRate?: number;
   totalSignals?: number;
   pendingSignals?: number;
+  executedSignals?: number;
+  // Risk
   riskLocked?: boolean;
   maxDailyTrades?: number;
   currentDailyTrades?: number;
   consecutiveLosses?: number;
-  selectedVector?: string;
+  maxConsecutiveLosses?: number;
+  currentDailyLoss?: number;
+  maxDailyLoss?: number;
+  // Session
+  session?: string;
+  sessionLocked?: boolean;
+  sessionCanScan?: boolean;
+  sessionBlockReason?: string;
+  activeCooldowns?: number;
+  // Connections
   tvConnected?: boolean;
   activeTab?: string;
-  selectedBroker?: string;
+  scanStatus?: string;
+}
+
+// Actions the assistant can PERFORM on the app
+export interface AssistantActions {
+  startEngine: () => void;
+  stopEngine: () => void;
+  pauseEngine: () => void;
+  clearSignals: () => void;
+  clearAllHistory: () => void;
+  toggleRiskLock: () => void;
+  acknowledgeSignal: (id: string) => void;
+  cancelSignal: (id: string) => void;
+  setMarketCategory: (cat: string) => void;
+  setSelectedVector: (vec: string) => void;
+  setSelectedTimeframes: (tfs: string[]) => void;
+  setSelectedBroker: (broker: string) => void;
+  setActiveTab: (tab: string) => void;
 }
 
 interface DasomtmfxAssistantProps {
   context?: AssistantContext;
+  actions?: AssistantActions;
 }
 
 type DisplayMode = "full" | "compact" | "orb" | "hidden";
@@ -56,7 +93,7 @@ function savePosition(pos: { x: number; y: number }) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pos)); } catch {}
 }
 
-export const DasomtmfxAssistant = ({ context = {} }: DasomtmfxAssistantProps) => {
+export const DasomtmfxAssistant = ({ context = {}, actions }: DasomtmfxAssistantProps) => {
   const [mode, setMode] = useState<DisplayMode>(() => {
     try { return (localStorage.getItem(MODE_KEY) as DisplayMode) || "compact"; } catch { return "compact"; }
   });
@@ -150,8 +187,6 @@ export const DasomtmfxAssistant = ({ context = {} }: DasomtmfxAssistantProps) =>
   }
 
   const robotSize = mode === "full" ? { w: 200, h: 220 } : mode === "compact" ? { w: 140, h: 150 } : { w: 60, h: 60 };
-
-  // Build status badge
   const statusText = context.isScanning ? "Scanning" : context.engineStatus === "RUNNING" ? "Active" : context.isPaused ? "Paused" : "Idle";
   const statusColor = context.isScanning ? "text-chart-4" : context.engineStatus === "RUNNING" ? "text-chart-2" : "text-muted-foreground";
 
@@ -225,6 +260,7 @@ export const DasomtmfxAssistant = ({ context = {} }: DasomtmfxAssistantProps) =>
               onClose={() => setChatOpen(false)}
               onMinimize={() => setChatOpen(false)}
               context={context}
+              actions={actions}
               voiceEnabled={voiceEnabled}
               onToggleVoice={() => setVoiceEnabled(!voiceEnabled)}
             />
