@@ -29,6 +29,22 @@ interface AssistantContext {
   setupGrade?: string;
   confidence?: number;
   session?: string;
+  engineStatus?: string;
+  isPaused?: boolean;
+  isScanning?: boolean;
+  scanPhase?: string;
+  scanProgress?: number;
+  winRate?: number;
+  totalSignals?: number;
+  pendingSignals?: number;
+  riskLocked?: boolean;
+  maxDailyTrades?: number;
+  currentDailyTrades?: number;
+  consecutiveLosses?: number;
+  selectedVector?: string;
+  tvConnected?: boolean;
+  activeTab?: string;
+  selectedBroker?: string;
 }
 
 interface ChatPanelProps {
