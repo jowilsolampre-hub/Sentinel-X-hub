@@ -536,7 +536,7 @@ const Index = () => {
         </div>
       </footer>
 
-      {/* DASOMTMFX AI Assistant */}
+      {/* DASOMTMFX AI Assistant - Connected to FULL app state */}
       <DasomtmfxAssistant 
         context={{
           pair: selectedBroker || "Not selected",
@@ -545,9 +545,24 @@ const Index = () => {
           scanStatus: isScanning ? "analyzing" : isRunning ? "running" : "idle",
           lastSignal: latestPendingSignal?.direction,
           setupGrade: undefined,
-          confidence: undefined,
+          confidence: stats.winRate > 0 ? Math.round(stats.winRate) : undefined,
           session: currentSession,
           signalDirection: latestPendingSignal?.direction === "BUY" || latestPendingSignal?.direction === "SELL" ? latestPendingSignal.direction as "BUY" | "SELL" : null,
+          engineStatus: stats.engineStatus,
+          isPaused,
+          isScanning,
+          scanPhase,
+          scanProgress,
+          winRate: stats.winRate,
+          totalSignals: stats.totalSignals,
+          pendingSignals: stats.pendingSignals,
+          riskLocked: riskGate.manualLock,
+          maxDailyTrades: riskGate.maxDailyTrades,
+          currentDailyTrades: riskGate.currentDailyTrades,
+          consecutiveLosses: riskGate.currentConsecutiveLosses,
+          selectedVector: selectedVector,
+          tvConnected,
+          selectedBroker: selectedBroker || undefined,
         }}
       />
     </div>
