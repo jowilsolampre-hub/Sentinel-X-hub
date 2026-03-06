@@ -271,7 +271,7 @@ const Index = () => {
         />
 
         {/* === MAIN CONTENT TABS === */}
-        <Tabs defaultValue="dashboard" className="space-y-4">
+        <Tabs defaultValue="dashboard" className="space-y-4" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="bg-secondary/50 flex-wrap">
             <TabsTrigger value="dashboard" className="gap-2">
               <LayoutDashboard className="w-4 h-4" />
