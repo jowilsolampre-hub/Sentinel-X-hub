@@ -52,6 +52,7 @@ const Index = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [showSignalModal, setShowSignalModal] = useState(false);
   const [tvPendingSignal, setTvPendingSignal] = useState<Signal | null>(null);
+  const [activeTab, setActiveTab] = useState("dashboard");
   
   // Get current session for strategy panel
   const currentSession = detectActiveSession() as Session;
@@ -574,6 +575,8 @@ const Index = () => {
           sessionBlockReason: sessionLock.scanBlockReason,
           selectedVector: selectedVector,
           tvConnected,
+          selectedBroker: selectedBroker || undefined,
+          activeTab,
           selectedBroker: selectedBroker || undefined,
         }}
         actions={{
