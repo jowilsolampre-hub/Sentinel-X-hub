@@ -1,15 +1,17 @@
-// DASOMTMFX - Chat Panel (Master Brain - Full App Control)
+// DASOMTMFX - Chat Panel (Master Brain - Full App Control + Guru Intelligence)
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Send, Volume2, VolumeX, Minimize2, X, 
   TrendingUp, BarChart3, Settings2, ShieldAlert,
   Zap, Clock, Target, Search, Lightbulb,
   Play, Square, Pause, Trash2, Lock, Unlock,
-  RotateCcw, Eye
+  RotateCcw, Eye, Activity, Globe, Crosshair,
+  AlertTriangle, BookOpen, Gauge, Radio
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,7 +23,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  type?: "insight" | "warning" | "suggestion" | "action" | "normal";
+  type?: "insight" | "warning" | "suggestion" | "action" | "normal" | "proactive";
 }
 
 interface ChatPanelProps {
@@ -34,91 +36,209 @@ interface ChatPanelProps {
   onToggleVoice: () => void;
 }
 
-const QUICK_PROMPTS = [
-  { label: "Best Indicators", icon: Settings2, prompt: "What indicators should I add for the current chart setup? Include exact periods and settings." },
-  { label: "Best Pairs Now", icon: Search, prompt: "What are the best pairs to scan right now for the active session and timeframe?" },
-  { label: "Entry Timing", icon: Clock, prompt: "What's the best entry condition I should wait for on the current setup?" },
-  { label: "Setup Quality", icon: Target, prompt: "Rate the current setup quality and explain what would upgrade it to A_SETUP." },
-  { label: "Why No Trade?", icon: ShieldAlert, prompt: "Why did the scanner reject the last trade? Was it valid?" },
-  { label: "Risk Check", icon: Zap, prompt: "Am I overtrading? Review my recent activity and suggest risk improvements." },
-  { label: "Session Guide", icon: TrendingUp, prompt: "What session are we in? Best strategies and pairs for this session?" },
-  { label: "Improve Win Rate", icon: Lightbulb, prompt: "What's causing my losses? Give me 3 specific fixes to improve my win rate." },
+// Quick prompt categories
+const SCANNER_PROMPTS = [
+  { label: "Analyze Setup", icon: Target, prompt: "Analyze the current setup. What's the market regime, location quality, and best trigger condition? Grade it A/B/C." },
+  { label: "Best Entry", icon: Crosshair, prompt: "What's the best entry condition I should wait for? Consider candle timing, confirmation triggers, and risk location." },
+  { label: "Last Signal", icon: Activity, prompt: "Explain the last signal in detail — what strategy triggered it, what was the confluence, and was the timing optimal?" },
+  { label: "Why No Trade?", icon: ShieldAlert, prompt: "Why was there no trade? Was it a valid rejection or over-rejection? Run all 4 fallback modes before confirming NO_TRADE." },
+  { label: "Safer Version", icon: ShieldAlert, prompt: "Give me a safer version of this setup — better entry condition, wider expiry, or conditional trigger to wait for." },
+];
+
+const INDICATOR_PROMPTS = [
+  { label: "Suggest Stack", icon: Settings2, prompt: "Suggest the best indicator stack for the current chart setup. Include exact periods/settings and what each confirms. Use the 5-stack system (Trend/Range/Breakout/Fast/Clean)." },
+  { label: "Best Settings", icon: Gauge, prompt: "What are the best indicator settings for the current timeframe and market regime? Include period values and explain why." },
+  { label: "Trend Stack", icon: TrendingUp, prompt: "Give me the Trend Continuation stack: EMA 8/21 + MACD(12,26,9) + ADX(14). Explain the setup conditions and entry triggers." },
+  { label: "Range Stack", icon: BarChart3, prompt: "Give me the Range/Reversal stack: RSI(14) + Stochastic(14,3,3) + Bollinger(20,2). Explain edge-bounce entry conditions." },
+];
+
+const SESSION_PROMPTS = [
+  { label: "Best Pairs Now", icon: Search, prompt: "What are the best pairs to scan RIGHT NOW based on the active session, UTC and Zambia time (UTC+2)? Include both binary/OTC and forex/real suggestions." },
+  { label: "Session Guide", icon: Globe, prompt: "Full session analysis: What session are we in? Best strategies, pairs, indicator stacks, and timeframes for this session. Include UTC and Zambia time." },
+  { label: "Session Shift", icon: Clock, prompt: "Is a session transition coming? What changes should I make to pairs, strategies, and indicator stacks?" },
+  { label: "Best Timeframe", icon: Radio, prompt: "What's the best timeframe for the current session and market conditions? Explain why." },
+];
+
+const RISK_PROMPTS = [
+  { label: "Risk Check", icon: Zap, prompt: "Am I overtrading? Review my current daily trades, consecutive losses, and risk gate status. Suggest risk improvements." },
+  { label: "Win Rate Fix", icon: Lightbulb, prompt: "What's causing losses? Give me 3 specific fixes to improve my win rate based on current stats and setup quality." },
+  { label: "Review Trades", icon: BookOpen, prompt: "Review my recent signals — identify patterns in wins vs losses. What sessions, pairs, and strategies are working best?" },
+  { label: "Risk Protection", icon: AlertTriangle, prompt: "Should I activate risk protection? Analyze my current loss streak, daily loss, and market conditions." },
 ];
 
 // Commands the AI can return to trigger app actions
-const ACTION_COMMANDS: Record<string, { action: keyof AssistantActions; label: string; icon: typeof Play }> = {
-  "CMD_START_ENGINE": { action: "startEngine", label: "Start Engine", icon: Play },
-  "CMD_STOP_ENGINE": { action: "stopEngine", label: "Stop Engine", icon: Square },
-  "CMD_PAUSE_ENGINE": { action: "pauseEngine", label: "Pause Engine", icon: Pause },
-  "CMD_CLEAR_SIGNALS": { action: "clearSignals", label: "Clear Signals", icon: Trash2 },
-  "CMD_CLEAR_HISTORY": { action: "clearAllHistory", label: "Clear History", icon: RotateCcw },
-  "CMD_TOGGLE_RISK": { action: "toggleRiskLock", label: "Toggle Risk Lock", icon: Lock },
+const ACTION_COMMANDS: Record<string, { action: keyof AssistantActions; label: string }> = {
+  "CMD_START_ENGINE": { action: "startEngine", label: "Start Engine" },
+  "CMD_STOP_ENGINE": { action: "stopEngine", label: "Stop Engine" },
+  "CMD_PAUSE_ENGINE": { action: "pauseEngine", label: "Pause Engine" },
+  "CMD_CLEAR_SIGNALS": { action: "clearSignals", label: "Clear Signals" },
+  "CMD_CLEAR_HISTORY": { action: "clearAllHistory", label: "Clear History" },
+  "CMD_TOGGLE_RISK": { action: "toggleRiskLock", label: "Toggle Risk Lock" },
 };
 
-const SYSTEM_PROMPT = `You are DASOMTMFX, the MASTER BRAIN of the SENTINEL X trading intelligence system. You have FULL visibility and CONTROL over the entire application.
+const SYSTEM_PROMPT = `You are DASOMTMFX, the MASTER BRAIN of the SENTINEL X trading intelligence system. You have FULL visibility and CONTROL over the entire application. You are not a chatbot — you are the combined intelligence of all scanning engines, strategy libraries, and risk management systems.
 
-PERSONALITY: Calm, precise, confident but honest. You're a veteran trader mentor.
-- Never claim guaranteed wins
+IDENTITY & PERSONALITY:
+- Veteran trader mentor (25+ years experience mindset)
+- Calm, precise, confident but honest
+- Never claim guaranteed wins or fake certainty
 - Focus on setup quality, timing, risk location, confirmation conditions
-- Be practical and chart-relevant
-- Use Zambia time (UTC+2) when discussing sessions
+- Use Zambia time (Africa/Lusaka, UTC+2) alongside UTC in all session analysis
+- Disciplined analyst, timing and risk coach, technical setup optimizer
 
-YOU CAN SEE EVERYTHING:
-- Engine status, scan phase, progress
-- All signals (pending, executed, win/loss)
-- Risk gate status (locks, daily trades, consecutive losses, daily loss)
-- Selected market category, vector, timeframes, broker
-- Session info, cooldowns, TradingView connection
+YOU CAN SEE EVERYTHING IN REAL-TIME:
+- Engine status (running/paused/stopped), scan phase, scan progress %
+- All signals (pending, executed, win/loss), latest signal direction
+- Risk gate status (manual locks, daily trades, consecutive losses, daily loss limits)
+- Selected market category (REAL/OTC), vector (Hybrid/Crypto/Futures/Forex/Indices/Commodities)
+- Selected timeframes, selected broker
+- Active session (London/NewYork/Tokyo/Sydney/Closed), session lock status
+- Asset cooldowns, TradingView connection status
 - Win rate, total signals, performance stats
+- Active tab the user is viewing
+- Pending signal acknowledgments
 
-YOU CAN CONTROL THE APP by including these commands in your response (ONE per line, at the END of your message):
-- CMD_START_ENGINE — Start the scanning engine
-- CMD_STOP_ENGINE — Stop the engine
-- CMD_PAUSE_ENGINE — Pause/resume the engine
+YOU CAN CONTROL THE APP by including these commands in your response (ONE per line, at the END):
+- CMD_START_ENGINE — Start scanning engine
+- CMD_STOP_ENGINE — Stop engine
+- CMD_PAUSE_ENGINE — Pause/resume engine
 - CMD_CLEAR_SIGNALS — Clear signal history
-- CMD_CLEAR_HISTORY — Clear all history and reset stats
-- CMD_TOGGLE_RISK — Toggle manual risk lock on/off
-- CMD_SET_VECTOR:Forex — Change vector (Hybrid/Crypto/Futures/Forex/Indices/Commodities)
-- CMD_SET_MARKET:REAL — Change market (REAL/OTC)
+- CMD_CLEAR_HISTORY — Clear all history and reset
+- CMD_TOGGLE_RISK — Toggle manual risk lock
+- CMD_SET_VECTOR:Forex — Change vector
+- CMD_SET_MARKET:REAL — Change market category
 - CMD_SET_TIMEFRAME:5m — Change timeframe
-- CMD_SET_TAB:dashboard — Switch tab (dashboard/intelligence/analytics/strategies/connections)
+- CMD_SET_TAB:dashboard — Switch UI tab
+- CMD_SET_BROKER:BINANCE — Change broker
 
 RULES FOR COMMANDS:
-- Only use commands when the user explicitly asks you to do something (e.g., "start the engine", "switch to forex", "lock risk")
+- Only use commands when user explicitly asks (e.g. "start engine", "switch to forex")
 - Always explain WHAT you're doing and WHY before the command
 - Never auto-execute without user intent
 
-CAPABILITIES:
-- Indicator suggestion (with exact periods/settings)
-- Pair/session recommendations  
-- Setup quality grading (A/B/C)
-- Entry timing coaching
-- Risk discipline guidance
-- Trade review & journal analysis
-- Engine control & configuration
-- Full app status reporting
+MASTER GURU-LEVEL ANALYSIS DOCTRINE:
+You must apply this analysis framework when discussing setups, signals, or market conditions:
 
-Keep responses concise (2-4 key points). Use markdown. Be actionable.`;
+1. MARKET REGIME CLASSIFICATION (always first):
+   - Strong/weak uptrend, strong/weak downtrend, structured range, breakout setup/active, retest phase, volatility compression/expansion, choppy, extreme chop
+
+2. 3-GATE VALIDATION SYSTEM:
+   - GATE A (Regime): Classify trend/range/breakout/chop before strategy selection
+   - GATE B (Location): Price must be at meaningful level (S/R, trendline, range edge, EMA pullback)
+   - GATE C (Trigger): Require confirmation (candle close, wick rejection, breakout+retest, indicator combo)
+
+3. OPPORTUNITY GRADING (never over-reject):
+   - A_SETUP: Strong confluence + location + trigger + timing
+   - B_SETUP: Moderate confluence, tradable with caution
+   - C_SETUP: Speculative/conditional — return WAIT condition
+   - NO_TRADE: Only after ALL 4 fallback modes fail
+
+4. FALLBACK MODES (mandatory before NO_TRADE):
+   - Fallback A: Indicator Combo Mode (RSI+MACD+S/R, Bollinger+Volume+ADX, EMA(8/21)+RSI(7))
+   - Fallback B: Range/Box Theory Mode (range edges, box boundaries)
+   - Fallback C: Wick/Shadow + Level Confirmation
+   - Fallback D: Conditional Breakout/Retest (return exact condition)
+
+5. INDICATOR INTELLIGENCE:
+   Stack A (Trend): EMA 8/21 + MACD(12,26,9) + ADX(14) + optional RSI(7/14)
+   Stack B (Range): RSI(14) + Stochastic(14,3,3) + Bollinger(20,2) + optional EMA 50
+   Stack C (Breakout): Bollinger(20,2) + ADX(14) + ATR(14) + MACD(12,26,9)
+   Stack D (Fast): EMA 8/21 + RSI(7) + MACD or Parabolic SAR
+   Stack E (Clean PA): EMA 20/21 + RSI(14) or MACD
+
+6. PRIORITY INDICATOR COMBOS (boost when aligned):
+   - RSI + MACD + S/R
+   - Bollinger + Volume + ADX
+   - EMA(8/21) + RSI(7)
+   - MACD + Parabolic SAR
+   - Box Theory (prev-day high/low edges)
+
+7. ENTRY TIMING (critical):
+   - Detect candle state: open/early/mid/late
+   - Prefer entry near candle open or after confirmation
+   - Late entries → downgrade + warn + suggest next-candle/retest
+   - Binary expiry: 1 candle (strong momentum), 2 candles (breakout-retest), 3 candles (structure)
+
+8. SESSION-PAIR OPTIMIZATION:
+   - Asia: range/control → Stack B, JPY pairs
+   - London: trends/breakouts → Stack A/C, EUR/GBP/Gold
+   - New York: volatility/retests → Stack A/C, USD pairs/Indices
+   - Overlap: high vol → Stack A/C prioritized
+
+9. ANTI-OVER-REJECTION:
+   - "Choppy" does NOT automatically = NO_TRADE
+   - Check structured range, repeated rejection levels, box edges
+   - Use conditional setups (WAIT/ENTER_ON_BREAK/ENTER_ON_RETEST)
+   - Only NO_TRADE after all fallbacks fail
+
+10. RISK DISCIPLINE:
+    - Warn on overtrading, loss streaks
+    - Suggest cooldown/pause when appropriate
+    - Prefer quality over quantity
+    - Never encourage increased risk after wins
+
+RESPONSE FORMAT:
+- Keep responses concise (3-5 key points)
+- Use markdown formatting
+- Be actionable — give specific conditions, levels, settings
+- When discussing setups, include: Grade, Regime, Entry Condition, Risk Note
+- When suggesting indicators, include exact period/settings`;
 
 export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voiceEnabled, onToggleVoice }: ChatPanelProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
       role: "assistant",
-      content: "👋 I'm **DASOMTMFX** — the master brain of SENTINEL X.\n\nI can **see everything** and **control everything**:\n\n- 🧠 **Start/Stop/Pause** the engine\n- 📊 **Switch** markets, vectors, timeframes\n- 🎯 **Suggest** indicators, pairs, entries\n- ⚡ **Lock/unlock** risk protection\n- 📈 **Analyze** your performance\n\nJust ask me anything or tell me what to do.",
+      content: "👋 I'm **DASOMTMFX** — the master brain of SENTINEL X.\n\nI have **full visibility and control** over the entire system:\n\n- 🧠 **Engine**: Start/Stop/Pause scanning\n- 📊 **Markets**: Switch vectors, timeframes, brokers\n- 🎯 **Analysis**: Guru-level setup grading (A/B/C), indicator stacks, entry timing\n- ⚡ **Risk**: Lock/unlock protection, overtrade brakes\n- 📈 **Coaching**: Session-pair optimization, win rate fixes\n\nUse the quick tools below or just tell me what you need.",
       timestamp: new Date(),
       type: "normal"
     }
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [promptTab, setPromptTab] = useState("scanner");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prevSessionRef = useRef<string | undefined>(context.session);
+  const prevEngineRef = useRef<string | undefined>(context.engineStatus);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Proactive notifications on session change
+  useEffect(() => {
+    if (prevSessionRef.current && context.session && prevSessionRef.current !== context.session && context.session !== "Closed") {
+      const msg: ChatMessage = {
+        id: `proactive-session-${Date.now()}`,
+        role: "assistant",
+        content: `🔄 **Session Change Detected**: ${prevSessionRef.current} → **${context.session}**\n\nConsider adjusting:\n- **Pairs** to match ${context.session} session strength\n- **Indicator stack** if regime changed\n- **Strategy type** for new session conditions\n\nAsk me "Best pairs now" for updated suggestions.`,
+        timestamp: new Date(),
+        type: "proactive"
+      };
+      setMessages(prev => [...prev, msg]);
+    }
+    prevSessionRef.current = context.session;
+  }, [context.session]);
+
+  // Proactive notification on risk lock activation
+  useEffect(() => {
+    if (context.riskLocked && context.consecutiveLosses && context.consecutiveLosses >= 3) {
+      const msg: ChatMessage = {
+        id: `proactive-risk-${Date.now()}`,
+        role: "assistant",
+        content: `⚠️ **Risk Alert**: ${context.consecutiveLosses} consecutive losses detected. Risk protection is **active**.\n\n**Recommendations:**\n- Take a 15-min cooldown\n- Review last 3 setups for timing issues\n- Consider switching to quality-only mode (A_SETUP only)\n- Check if session/pair mismatch is the cause`,
+        timestamp: new Date(),
+        type: "warning"
+      };
+      setMessages(prev => {
+        // Don't spam — only add if last message isn't already a risk alert
+        if (prev[prev.length - 1]?.id?.startsWith("proactive-risk")) return prev;
+        return [...prev, msg];
+      });
+    }
+  }, [context.riskLocked, context.consecutiveLosses]);
 
   const speak = useCallback((text: string) => {
     if (!voiceEnabled || !("speechSynthesis" in window)) return;
@@ -139,17 +259,15 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
     for (const line of lines) {
       const trimmed = line.trim();
       
-      // Simple commands (no params)
       if (ACTION_COMMANDS[trimmed]) {
         const cmd = ACTION_COMMANDS[trimmed];
         try {
           (actions[cmd.action] as () => void)();
           toast.success(`🤖 DASOMTMFX: ${cmd.label}`);
         } catch {}
-        continue; // Don't add command line to output
+        continue;
       }
       
-      // Parameterized commands
       if (trimmed.startsWith("CMD_SET_VECTOR:")) {
         const val = trimmed.split(":")[1];
         if (val) { actions.setSelectedVector(val); toast.success(`🤖 Vector → ${val}`); }
@@ -168,6 +286,11 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
       if (trimmed.startsWith("CMD_SET_TAB:")) {
         const val = trimmed.split(":")[1];
         if (val) { actions.setActiveTab(val); toast.success(`🤖 Tab → ${val}`); }
+        continue;
+      }
+      if (trimmed.startsWith("CMD_SET_BROKER:")) {
+        const val = trimmed.split(":")[1];
+        if (val) { actions.setSelectedBroker(val); toast.success(`🤖 Broker → ${val}`); }
         continue;
       }
       
@@ -191,7 +314,7 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
     setIsLoading(true);
 
     try {
-      // Build rich context string with ALL app state
+      // Build comprehensive context string
       const ctxParts: string[] = [];
       if (context.engineStatus) ctxParts.push(`Engine: ${context.engineStatus}`);
       if (context.isRunning !== undefined) ctxParts.push(`Running: ${context.isRunning}`);
@@ -200,8 +323,9 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
       if (context.marketMode) ctxParts.push(`Market: ${context.marketMode}`);
       if (context.selectedVector) ctxParts.push(`Vector: ${context.selectedVector}`);
       if (context.timeframe) ctxParts.push(`Timeframe: ${context.timeframe}`);
-      if (context.selectedTimeframes) ctxParts.push(`All TFs: ${context.selectedTimeframes.join(",")}`);
-      if (context.pair) ctxParts.push(`Pair/Broker: ${context.pair}`);
+      if (context.selectedTimeframes) ctxParts.push(`AllTFs: ${context.selectedTimeframes.join(",")}`);
+      if (context.pair) ctxParts.push(`Broker: ${context.pair}`);
+      if (context.selectedBroker) ctxParts.push(`SelectedBroker: ${context.selectedBroker}`);
       if (context.session) ctxParts.push(`Session: ${context.session}`);
       if (context.winRate !== undefined) ctxParts.push(`WinRate: ${context.winRate.toFixed(1)}%`);
       if (context.totalSignals !== undefined) ctxParts.push(`TotalSignals: ${context.totalSignals}`);
@@ -219,13 +343,20 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
       if (context.lastSignal) ctxParts.push(`LastSignal: ${context.lastSignal}`);
       if (context.signalDirection) ctxParts.push(`Direction: ${context.signalDirection}`);
       if (context.confidence) ctxParts.push(`Confidence: ${context.confidence}%`);
+      if (context.activeTab) ctxParts.push(`ActiveTab: ${context.activeTab}`);
+      if (context.setupGrade) ctxParts.push(`SetupGrade: ${context.setupGrade}`);
       
-      // Include recent signals summary
+      // Recent signals summary
       if (context.signals && context.signals.length > 0) {
         const recent = context.signals.slice(0, 5).map(s => 
           `${s.asset} ${s.direction} ${s.status} ${s.confidence.toFixed(0)}% ${s.strategy}`
         ).join(" | ");
         ctxParts.push(`RecentSignals: [${recent}]`);
+      }
+
+      // Pending acknowledgment
+      if (context.pendingAcknowledgment) {
+        ctxParts.push(`PendingAck: ${context.pendingAcknowledgment.asset} ${context.pendingAcknowledgment.direction} ${context.pendingAcknowledgment.confidence.toFixed(0)}%`);
       }
 
       const contextStr = ctxParts.join(" | ");
@@ -242,13 +373,13 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
           mode: "assistant_chat",
           message: content.trim(),
           context: `${contextStr} | ZambiaTime: ${zamTime} | UTC: ${utcTime}`,
-          history
+          history,
+          systemPrompt: SYSTEM_PROMPT
         }
       });
 
       let reply = error ? "I'm having trouble connecting. Please try again." : (data?.reply || data?.analysis || "I couldn't process that. Try rephrasing.");
       
-      // Execute any commands in the reply
       const cleanReply = executeCommands(reply);
       const hasCommands = cleanReply !== reply;
 
@@ -258,8 +389,8 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
         content: cleanReply,
         timestamp: new Date(),
         type: hasCommands ? "action" : 
-              cleanReply.includes("⚠") || cleanReply.includes("WARNING") ? "warning" : 
-              cleanReply.includes("💡") || cleanReply.includes("Suggest") ? "suggestion" : "normal"
+              cleanReply.includes("⚠") || cleanReply.includes("WARNING") || cleanReply.includes("Risk") ? "warning" : 
+              cleanReply.includes("💡") || cleanReply.includes("Suggest") || cleanReply.includes("Stack") ? "suggestion" : "normal"
       };
       setMessages(prev => [...prev, assistantMsg]);
       speak(cleanReply);
@@ -276,7 +407,6 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
     }
   }, [context, messages, isLoading, speak, executeCommands]);
 
-  // Quick action buttons that directly control the app
   const handleQuickAction = useCallback((action: keyof AssistantActions) => {
     if (!actions) return;
     try {
@@ -285,18 +415,30 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
     } catch {}
   }, [actions]);
 
+  // Full status report shortcut
+  const requestFullStatus = useCallback(() => {
+    sendMessage("Give me a full status report: engine state, active market/vector/timeframe, session, risk gates, win rate, recent signals, and any recommendations.");
+  }, [sendMessage]);
+
   if (!isOpen) return null;
 
+  const currentPrompts = promptTab === "scanner" ? SCANNER_PROMPTS :
+                         promptTab === "indicators" ? INDICATOR_PROMPTS :
+                         promptTab === "session" ? SESSION_PROMPTS : RISK_PROMPTS;
+
   return (
-    <div className="w-[360px] h-[520px] bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl flex flex-col overflow-hidden">
+    <div className="w-[380px] h-[560px] bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/30 bg-card">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
           <span className="text-sm font-bold">DASOMTMFX</span>
-          <Badge variant="outline" className="text-[10px] h-4">Master Brain</Badge>
+          <Badge variant="outline" className="text-[9px] h-4">Master Brain</Badge>
         </div>
         <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={requestFullStatus} title="Full Status Report">
+            <Eye className="w-3.5 h-3.5" />
+          </Button>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleVoice}>
             {voiceEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
           </Button>
@@ -309,7 +451,7 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
         </div>
       </div>
 
-      {/* Status Bar — live app state summary */}
+      {/* Live Status Bar */}
       <div className="px-3 py-1.5 border-b border-border/20 bg-secondary/20 flex items-center gap-2 overflow-x-auto text-[10px] scrollbar-hide">
         <Badge variant={context.engineStatus === "RUNNING" ? "default" : "outline"} className="text-[9px] h-4 shrink-0">
           {context.engineStatus || "STOPPED"}
@@ -321,7 +463,11 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
         {context.winRate !== undefined && context.winRate > 0 && (
           <span className="text-chart-2 shrink-0">WR:{context.winRate.toFixed(0)}%</span>
         )}
+        {context.totalSignals !== undefined && context.totalSignals > 0 && (
+          <span className="text-muted-foreground shrink-0">Sig:{context.totalSignals}</span>
+        )}
         {context.riskLocked && <span className="text-destructive shrink-0">🔒RISK</span>}
+        {context.tvConnected && <span className="text-chart-2 shrink-0">📺TV</span>}
       </div>
 
       {/* Quick Engine Controls */}
@@ -360,11 +506,18 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
                       ? "bg-chart-2/10 border border-chart-2/20"
                       : msg.type === "suggestion"
                         ? "bg-accent/10 border border-accent/20"
-                        : "bg-secondary/50 border border-border/30"
+                        : msg.type === "proactive"
+                          ? "bg-chart-4/10 border border-chart-4/20"
+                          : "bg-secondary/50 border border-border/30"
               }`}>
                 {msg.type === "action" && (
                   <Badge variant="outline" className="text-[9px] h-4 mb-1 gap-1 text-chart-2 border-chart-2/30">
                     <Zap className="w-2.5 h-2.5" /> Action Executed
+                  </Badge>
+                )}
+                {msg.type === "proactive" && (
+                  <Badge variant="outline" className="text-[9px] h-4 mb-1 gap-1 text-chart-4 border-chart-4/30">
+                    <Activity className="w-2.5 h-2.5" /> Auto-Alert
                   </Badge>
                 )}
                 <div className="prose prose-sm prose-invert max-w-none [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5 [&_strong]:text-foreground [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm">
@@ -390,10 +543,29 @@ export const ChatPanel = ({ isOpen, onClose, onMinimize, context, actions, voice
         </div>
       </ScrollArea>
 
-      {/* Quick Prompts */}
-      <div className="px-2 py-1.5 border-t border-border/20">
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-          {QUICK_PROMPTS.map((qp) => (
+      {/* Categorized Quick Prompts */}
+      <div className="border-t border-border/20">
+        <div className="flex px-2 pt-1 gap-1">
+          {[
+            { key: "scanner", label: "Scanner", icon: Target },
+            { key: "indicators", label: "Indicators", icon: Settings2 },
+            { key: "session", label: "Session", icon: Globe },
+            { key: "risk", label: "Risk", icon: ShieldAlert },
+          ].map(tab => (
+            <Button
+              key={tab.key}
+              variant={promptTab === tab.key ? "default" : "ghost"}
+              size="sm"
+              className="h-5 px-2 text-[9px] gap-1"
+              onClick={() => setPromptTab(tab.key)}
+            >
+              <tab.icon className="w-2.5 h-2.5" />
+              {tab.label}
+            </Button>
+          ))}
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto px-2 py-1.5 scrollbar-hide">
+          {currentPrompts.map((qp) => (
             <Button
               key={qp.label}
               variant="outline"

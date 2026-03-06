@@ -52,6 +52,7 @@ const Index = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [showSignalModal, setShowSignalModal] = useState(false);
   const [tvPendingSignal, setTvPendingSignal] = useState<Signal | null>(null);
+  const [activeTab, setActiveTab] = useState("dashboard");
   
   // Get current session for strategy panel
   const currentSession = detectActiveSession() as Session;
@@ -271,7 +272,7 @@ const Index = () => {
         />
 
         {/* === MAIN CONTENT TABS === */}
-        <Tabs defaultValue="dashboard" className="space-y-4">
+        <Tabs defaultValue="dashboard" className="space-y-4" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="bg-secondary/50 flex-wrap">
             <TabsTrigger value="dashboard" className="gap-2">
               <LayoutDashboard className="w-4 h-4" />
@@ -575,6 +576,7 @@ const Index = () => {
           selectedVector: selectedVector,
           tvConnected,
           selectedBroker: selectedBroker || undefined,
+          activeTab,
         }}
         actions={{
           startEngine: handleStartEngine,
@@ -589,11 +591,7 @@ const Index = () => {
           setSelectedVector: (vec: string) => handleVectorChange(vec as VectorOption),
           setSelectedTimeframes: (tfs: string[]) => setSelectedTimeframes(tfs as TimeframeOption[]),
           setSelectedBroker: (b: string) => setSelectedBroker(b as AnyBroker),
-          setActiveTab: (tab: string) => {
-            // Programmatically click the tab
-            const tabEl = document.querySelector(`[data-state][value="${tab}"]`) as HTMLElement;
-            if (tabEl) tabEl.click();
-          },
+          setActiveTab: (tab: string) => setActiveTab(tab),
         }}
       />
     </div>
