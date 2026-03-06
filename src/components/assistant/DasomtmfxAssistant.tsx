@@ -52,6 +52,8 @@ export interface AssistantContext {
   tvConnected?: boolean;
   activeTab?: string;
   scanStatus?: string;
+  setupGrade?: string;
+  selectedBroker?: string;
 }
 
 // Actions the assistant can PERFORM on the app
