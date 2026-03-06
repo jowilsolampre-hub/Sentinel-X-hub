@@ -577,7 +577,6 @@ const Index = () => {
           tvConnected,
           selectedBroker: selectedBroker || undefined,
           activeTab,
-          selectedBroker: selectedBroker || undefined,
         }}
         actions={{
           startEngine: handleStartEngine,
