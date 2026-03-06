@@ -591,11 +591,7 @@ const Index = () => {
           setSelectedVector: (vec: string) => handleVectorChange(vec as VectorOption),
           setSelectedTimeframes: (tfs: string[]) => setSelectedTimeframes(tfs as TimeframeOption[]),
           setSelectedBroker: (b: string) => setSelectedBroker(b as AnyBroker),
-          setActiveTab: (tab: string) => {
-            // Programmatically click the tab
-            const tabEl = document.querySelector(`[data-state][value="${tab}"]`) as HTMLElement;
-            if (tabEl) tabEl.click();
-          },
+          setActiveTab: (tab: string) => setActiveTab(tab),
         }}
       />
     </div>
