@@ -81,11 +81,14 @@ async function callGeminiChat(
     body: JSON.stringify(body),
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error(`Gemini Chat API error ${response.status}:`, errText);
-    throw new Error(`Gemini API error: ${response.status}`);
-  }
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`Gemini Chat API error ${response.status}:`, errText);
+      if (response.status === 429) {
+        throw new Error("Gemini rate limit reached. Please wait a moment and try again.");
+      }
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
 
   const data = await response.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
