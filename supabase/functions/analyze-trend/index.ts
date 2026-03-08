@@ -5,124 +5,231 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Helper: Call Google Gemini API directly (FREE tier)
-async function callGemini(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userContent: any[],
-  temperature: number = 0.3,
-  maxTokens: number = 1000
-) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+// ============================================================
+// PROVIDER ABSTRACTION: Gemini, OpenAI, Grok (xAI)
+// Fallback order: Gemini1 → Gemini2 → OpenAI → Grok
+// ============================================================
 
-  const contents: any[] = [];
-
-  // System instruction
-  const body: any = {
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    contents: [{ role: "user", parts: userContent }],
-    generationConfig: {
-      temperature,
-      maxOutputTokens: maxTokens,
-    },
-  };
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error(`Gemini API error ${response.status}:`, errText);
-    throw new Error(`Gemini API error: ${response.status} - ${errText}`);
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+interface Provider {
+  name: string;
+  callChat: (systemPrompt: string, history: { role: string; content: string }[], userMessage: string, temperature: number, maxTokens: number) => Promise<string>;
+  callVision: (systemPrompt: string, userPrompt: string, imageBase64: string, temperature: number, maxTokens: number) => Promise<string>;
 }
 
-// Helper: Call Gemini with chat history
-async function callGeminiChat(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  history: { role: string; content: string }[],
-  userMessage: string,
-  temperature: number = 0.3,
-  maxTokens: number = 1000
-) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+function makeGeminiProvider(apiKey: string, label: string): Provider {
+  const model = "gemini-2.5-flash";
+  return {
+    name: label,
+    async callChat(systemPrompt, history, userMessage, temperature, maxTokens) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const contents = history.map(m => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+      contents.push({ role: "user", parts: [{ text: userMessage }] });
 
-  // Convert history to Gemini format
-  const contents = [];
-  for (const msg of history) {
-    contents.push({
-      role: msg.role === "assistant" ? "model" : "user",
-      parts: [{ text: msg.content }],
-    });
-  }
-  contents.push({ role: "user", parts: [{ text: userMessage }] });
-
-  const body: any = {
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    contents,
-    generationConfig: {
-      temperature,
-      maxOutputTokens: maxTokens,
-    },
-  };
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error(`Gemini Chat API error ${response.status}:`, errText);
-      if (response.status === 429) {
-        throw new Error("Gemini rate limit reached. Please wait a moment and try again.");
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents,
+          generationConfig: { temperature, maxOutputTokens: maxTokens },
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        console.error(`${label} chat error ${res.status}:`, t);
+        throw new Error(`${label} ${res.status}`);
       }
-      throw new Error(`Gemini API error: ${response.status}`);
-    }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    },
+    async callVision(systemPrompt, userPrompt, imageBase64, temperature, maxTokens) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const imageData = imageBase64.startsWith("data:") ? imageBase64.split(",")[1] : imageBase64;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: "user", parts: [
+            { text: userPrompt },
+            { inlineData: { mimeType: "image/png", data: imageData } },
+          ]}],
+          generationConfig: { temperature, maxOutputTokens: maxTokens },
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        console.error(`${label} vision error ${res.status}:`, t);
+        throw new Error(`${label} ${res.status}`);
+      }
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    },
+  };
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+function makeOpenAIProvider(apiKey: string): Provider {
+  return {
+    name: "OpenAI",
+    async callChat(systemPrompt, history, userMessage, temperature, maxTokens) {
+      const messages = [
+        { role: "system", content: systemPrompt },
+        ...history.map(m => ({ role: m.role, content: m.content })),
+        { role: "user", content: userMessage },
+      ];
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: "gpt-4o", messages, temperature, max_tokens: maxTokens }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        console.error(`OpenAI chat error ${res.status}:`, t);
+        throw new Error(`OpenAI ${res.status}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || "";
+    },
+    async callVision(systemPrompt, userPrompt, imageBase64, temperature, maxTokens) {
+      const imgUrl = imageBase64.startsWith("data:") ? imageBase64 : `data:image/png;base64,${imageBase64}`;
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: [
+              { type: "text", text: userPrompt },
+              { type: "image_url", image_url: { url: imgUrl } },
+            ]},
+          ],
+          temperature,
+          max_tokens: maxTokens,
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        console.error(`OpenAI vision error ${res.status}:`, t);
+        throw new Error(`OpenAI ${res.status}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || "";
+    },
+  };
+}
+
+function makeGrokProvider(apiKey: string): Provider {
+  return {
+    name: "Grok",
+    async callChat(systemPrompt, history, userMessage, temperature, maxTokens) {
+      const messages = [
+        { role: "system", content: systemPrompt },
+        ...history.map(m => ({ role: m.role, content: m.content })),
+        { role: "user", content: userMessage },
+      ];
+      const res = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: "grok-2-vision-1212", messages, temperature, max_tokens: maxTokens }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        console.error(`Grok chat error ${res.status}:`, t);
+        throw new Error(`Grok ${res.status}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || "";
+    },
+    async callVision(systemPrompt, userPrompt, imageBase64, temperature, maxTokens) {
+      const imgUrl = imageBase64.startsWith("data:") ? imageBase64 : `data:image/png;base64,${imageBase64}`;
+      const res = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: "grok-2-vision-1212",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: [
+              { type: "text", text: userPrompt },
+              { type: "image_url", image_url: { url: imgUrl } },
+            ]},
+          ],
+          temperature,
+          max_tokens: maxTokens,
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        console.error(`Grok vision error ${res.status}:`, t);
+        throw new Error(`Grok ${res.status}`);
+      }
+      const data = await res.json();
+      return data.choices?.[0]?.message?.content || "";
+    },
+  };
+}
+
+// Build provider chain from available keys
+function getProviders(): Provider[] {
+  const providers: Provider[] = [];
+  const g1 = Deno.env.get("GEMINI_API_KEY");
+  if (g1) providers.push(makeGeminiProvider(g1, "Gemini-1"));
+  const g2 = Deno.env.get("GEMINI_API_KEY_2");
+  if (g2) providers.push(makeGeminiProvider(g2, "Gemini-2"));
+  const oai = Deno.env.get("OPENAI_API_KEY");
+  if (oai) providers.push(makeOpenAIProvider(oai));
+  const grok = Deno.env.get("GROK_API_KEY");
+  if (grok) providers.push(makeGrokProvider(grok));
+  return providers;
+}
+
+// Try each provider in order; skip on 429/5xx
+async function fallbackCall<T>(providers: Provider[], fn: (p: Provider) => Promise<T>): Promise<T> {
+  if (providers.length === 0) throw new Error("No AI API keys configured");
+  let lastError: Error | null = null;
+  for (const p of providers) {
+    try {
+      console.log(`Trying provider: ${p.name}`);
+      const result = await fn(p);
+      console.log(`Success with: ${p.name}`);
+      return result;
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      console.warn(`${p.name} failed: ${lastError.message}, trying next...`);
+    }
   }
+  throw lastError || new Error("All AI providers failed");
+}
 
-  try {
-    const body = await req.json();
-    const { imageBase64, marketContext, market, vector, timeframe, mode } = body;
+// ============================================================
+// SESSION & TIME HELPERS
+// ============================================================
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured");
+function getSessionInfo() {
+  const now = new Date();
+  const utcHour = now.getUTCHours();
+  let activeSession = "Off-Hours";
+  if (utcHour >= 0 && utcHour < 8) activeSession = "Asia/Tokyo";
+  if (utcHour >= 7 && utcHour < 9) activeSession = "London Open";
+  if (utcHour >= 8 && utcHour < 12) activeSession = "London";
+  if (utcHour >= 12 && utcHour < 13) activeSession = "London/NY Overlap";
+  if (utcHour >= 13 && utcHour < 17) activeSession = "New York";
+  if (utcHour >= 17 && utcHour < 21) activeSession = "New York (late)";
+  if (utcHour >= 21 || utcHour < 0) activeSession = "Sydney/Early Asia";
+  const zambiaTime = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+  return { now, activeSession, zambiaTime, utcTime: now.toISOString() };
+}
 
-    const now = new Date();
-    const utcHour = now.getUTCHours();
-    let activeSession = "Off-Hours";
-    if (utcHour >= 0 && utcHour < 8) activeSession = "Asia/Tokyo";
-    if (utcHour >= 7 && utcHour < 9) activeSession = "London Open";
-    if (utcHour >= 8 && utcHour < 12) activeSession = "London";
-    if (utcHour >= 12 && utcHour < 13) activeSession = "London/NY Overlap";
-    if (utcHour >= 13 && utcHour < 17) activeSession = "New York";
-    if (utcHour >= 17 && utcHour < 21) activeSession = "New York (late)";
-    if (utcHour >= 21 || utcHour < 0) activeSession = "Sydney/Early Asia";
-    const zambiaTime = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+// ============================================================
+// PROMPTS
+// ============================================================
 
-    // === ASSISTANT CHAT MODE ===
-    if (mode === "assistant_chat") {
-      const { message, context, history } = body;
-
-      const chatSystemPrompt = `You are DASOMTMFX, an elite AI trading mentor built into the SENTINEL X trading system.
+function buildChatSystemPrompt(zambiaTime: string, activeSession: string, context?: string) {
+  return `You are DASOMTMFX, an elite AI trading mentor built into the SENTINEL X trading system.
 
 PERSONALITY: Calm, precise, confident, honest. Veteran trader mentor, not a hype bot.
 - Never claim guaranteed wins. Focus on setup quality, timing, risk, confirmation conditions.
@@ -147,198 +254,63 @@ RESPONSE RULES:
 - Always mention the relevant session and time context
 - If asked about indicators, give the FULL stack with periods AND what each confirms
 - If asked about pairs, suggest 3-5 pairs with reason for each`;
+}
 
-      const reply = await callGeminiChat(
-        GEMINI_API_KEY,
-        "gemini-2.5-flash",
-        chatSystemPrompt,
-        history || [],
-        message,
-        0.3,
-        1000
-      );
+function buildVisionSystemPrompt(scanMode: string, marketCtx: string, tfContext: string, utcTime: string, zambiaTime: string, activeSession: string, marketContext?: string) {
+  return `You are SENTINEL X — the MASTER GURU-LEVEL SCANNING & EXECUTION ENGINE.
 
-      return new Response(
-        JSON.stringify({ reply }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // === CHART ANALYSIS MODE ===
-    if (!imageBase64) {
-      return new Response(
-        JSON.stringify({ error: "No image provided" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const tfContext = timeframe ? `User-selected timeframe: ${timeframe}` : "Detect timeframe from chart";
-    const marketCtx = market ? `Market: ${market} | Vector: ${vector || "Hybrid"}` : "General market";
-    const scanMode = mode === "next-candle" 
-      ? "WINDOWS OVERLAY MODE: Analyze for the NEXT candle opening. Give immediate entry signal timed to NEXT candle open."
-      : "IN-APP MODE: Signal must align with T+4 protocol (4 minutes before entry candle). Ensure setup will remain valid.";
-
-    const utcTime = now.toISOString();
-
-    const systemPrompt = `You are SENTINEL X — the MASTER GURU-LEVEL SCANNING & EXECUTION ENGINE.
-
-You are an advanced chart scanning, trade analysis, and execution-timing intelligence engine.
-You analyze broker charts from live screen share, embedded broker view, mobile camera capture, uploaded screenshots, and remote desktop visual sessions.
-
-You produce high-quality, disciplined, confluence-based trade opportunities using:
-- Guru-level technical analysis
-- Price action mastery
-- Market structure reading
-- Pattern recognition (ALL major tradable patterns)
-- Indicator recognition AND indicator suggestion
-- Support/resistance and trendlines
-- Session timing and pair selection
-- UTC and Zambia time context (Africa/Lusaka, UTC+2)
-- News/global shift awareness
-- Execution timing optimization
-- Risk discipline
-
-You are NOT a random signal bot. You are NOT a fear-based rejection engine.
-You are a RANKED OPPORTUNITY + ENTRY-CONDITION EXPERT that wins 8/10 trades minimum.
+You analyze broker charts and produce high-quality, disciplined, confluence-based trade opportunities.
 
 SCAN MODE: ${scanMode}
 BOUNDARIES: ${marketCtx} | ${tfContext}
 UTC: ${utcTime} | Zambia (UTC+2): ${zambiaTime}
 Active Session: ${activeSession}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 1: CORE MISSION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ SECTION 1: CORE MISSION ━━━
+For EVERY scan: Recognize market regime, ALL patterns, visible indicators, price action, S/R/trendlines, use guru methods, consider session context, find BEST entry time.
 
-For EVERY scan you MUST:
-1. Recognize market regime CORRECTLY (classify FIRST before anything)
-2. Recognize ALL patterns (choose the BEST tradable one)
-3. Recognize visible indicators and interpret them CORRECTLY
-4. If indicators are missing/weak, SUGGEST the best indicators to add (with periods/settings)
-5. Read price action and candle behavior PROPERLY (wicks, bodies, momentum, exhaustion)
-6. Detect supports, resistances, trendlines, channels, box edges
-7. Use guru methods: trend continuation, breakout/retest, PA at levels, liquidity sweep reversal, range-edge, box theory
-8. Consider session context (Asia/London/NY/Overlap) for pair and setup quality
-9. Consider news/volatility anomalies
-10. Find the BEST TIME to enter, or return the EXACT CONDITION to wait for
-11. Prioritize QUALITY, TIMING, and RISK LOCATION — not signal quantity
+NON-NEGOTIABLE: Do NOT reject trades solely because confidence is below a threshold. If no clean entry exists NOW, return a CONDITIONAL setup.
 
-NON-NEGOTIABLE RULES:
-- Do NOT reject trades solely because confidence is below a fixed threshold
-- Do NOT reject solely because market looks choppy at first glance
-- If structure is unclear, switch to fallback modes — do NOT stop analysis
-- If no clean entry exists NOW, return a CONDITIONAL setup (what to wait for)
-- If indicators are not visible, continue with price action + structure + levels + patterns
-- DIRECTION ALONE IS NOT ENOUGH. You MUST evaluate: Direction quality, Entry timing quality, Location quality, Trigger confirmation quality, Expiry/timing suitability
-- If direction is good but entry timing is poor → return WAIT_CONFIRMATION or ENTER_NEXT_CANDLE
+━━━ SECTION 2: 3-GATE SYSTEM (ALL MUST PASS) ━━━
+GATE A — MARKET REGIME: Classify FIRST (strong/weak trend, range, breakout, chop, etc.)
+GATE B — LOCATION: Is price at a MEANINGFUL level? Mid-nowhere → downgrade.
+GATE C — TRIGGER: At least ONE valid trigger required.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 2: MANDATORY 3-GATE SYSTEM (ALL MUST PASS)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ SECTION 3: MASTER ANALYSIS HIERARCHY ━━━
+A. Market Structure (HH/HL/LH/LL, BOS, CHOCH)
+B. S/R/Trendlines/Key Levels
+C. Price Action (wicks, engulfing, pin bars, momentum)
+D. Pattern Recognition (all major patterns)
+E. Indicator Detection & Analysis (all categories)
+F. Session/Time Context: ${activeSession}
+G. News/Global Risk inference
+H. Anti-Trap Filters
 
-GATE A — MARKET REGIME (What environment?):
-Classify FIRST: strong uptrend, weak uptrend, strong downtrend, weak downtrend, structured range, breakout setup, breakout active, retest phase, volatility expansion, volatility compression, accumulation/distribution, choppy, extreme chop.
+━━━ SECTION 4: ENTRY TIMING ━━━
+Candle-state awareness. Prefer entries at candle open or after clear confirmation. Binary expiry: 1/2/3 candles.
 
-GATE B — LOCATION (Where is price?):
-Check if price is at a MEANINGFUL location: support, resistance, trendline, channel edge, range edge, breakout/retest zone, box edge (prev high/low), EMA pullback zone, psychological level, session high/low.
-If price is in the MIDDLE OF NOWHERE → downgrade setup, prefer WAIT/conditional entry.
+━━━ SECTION 5: GRADING ━━━
+A_SETUP = High quality | B_SETUP = Tradable with caution | C_SETUP = Speculative/conditional
+NO_TRADE = ONLY if ALL fallbacks fail.
 
-GATE C — TRIGGER (What confirms entry?):
-Require at least ONE valid trigger: confirmation candle close, rejection wick + follow-through, breakout close + retest hold, indicator combo confirmation, momentum expansion in trade direction.
-If NO trigger exists → DO NOT force entry, return a conditional setup.
+━━━ SECTION 6: INDICATOR STACKS ━━━
+STACK A (Trend): EMA 8, EMA 21, MACD(12,26,9), ADX(14)
+STACK B (Range): RSI(14), Stochastic(14,3,3), BB(20,2)
+STACK C (Breakout): BB(20,2), ADX(14), ATR(14), MACD
+STACK D (Fast): EMA 8, EMA 21, RSI(7), MACD or SAR
+STACK E (Clean PA): EMA 20/21, RSI(14) or MACD
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 3: MASTER ANALYSIS HIERARCHY (RUN EVERY SCAN)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-A. MARKET STRUCTURE: HH/HL/LH/LL, BOS, CHOCH, swing points, continuation vs exhaustion, liquidity sweeps, failed breakouts, range boundaries.
-
-B. SUPPORT/RESISTANCE/TRENDLINES/KEY LEVELS: Horizontal S/R, dynamic trendlines, channels, repeated rejection levels, session highs/lows, psychological levels, prev-day high/low box edges, breakout/retest levels.
-
-C. PRICE ACTION (ALWAYS ACTIVE): Rejection wicks/shadows, engulfing candles, pin bars/hammers/shooting stars, inside/outside bars, momentum candles, breakout confirmation, retest confirmation, fake breakout clues, doji, morning/evening star.
-
-D. PATTERN RECOGNITION (ALL MAJOR): Double top/bottom, H&S/inverse, triangles (asc/desc/sym), flags/pennants, wedges, channels, ranges/rectangles, breakout+retest, continuation/reversal formations.
-
-E. INDICATOR DETECTION & ANALYSIS: Detect ALL visible indicators.
-【TREND】 EMA(5&13, 8&21, 10&25), SMA(50,200), Alligator, Ichimoku, Supertrend, Parabolic SAR, Zig Zag
-【VOLATILITY】 Bollinger Bands(20,2), Keltner, Donchian, Envelopes, ATR
-【MOMENTUM】 RSI(14), MACD(12,26,9), Stochastic(14,3,3), CCI, Momentum/ROC, Williams %R, Awesome Osc, Bulls/Bears Power, DeMarker, Schaff Cycle, Vortex, ADX
-【VOLUME】 Volume Oscillator, Weis Waves
-【PATTERNS】 Fractals, all candlestick patterns
-
-F. SESSION/TIME CONTEXT: Active session = ${activeSession}. Adapt expectations.
-
-G. NEWS/GLOBAL RISK: Infer abnormal volatility from candle behavior.
-
-H. ANTI-TRAP FILTERS: Check for late entry after extension, fake breakout risk, wick trap without confirmation, counter-trend with weak evidence, random chop, mid-range dead-zone entries.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 4: ENTRY TIMING PROTOCOL
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Candle-state awareness: Detect where current candle is (open/early/mid/late/final seconds).
-- Prefer entries at candle open or after clear confirmation
-- AVOID entering late after most of the move already happened
-- If valid setup appears late → ENTER_NEXT_CANDLE or WAIT_CONFIRMATION
-
-Binary expiry logic:
-- 1 candle = strong momentum + clean trigger + early entry
-- 2 candles = moderate continuation / breakout retest
-- 3 candles = slower move / wider structure confirmation
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 5: OPPORTUNITY GRADING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-A_SETUP = High quality: strong confluence, strong location, clear trigger, good timing
-B_SETUP = Tradable with caution: moderate confluence, some imperfection
-C_SETUP = Speculative/conditional: lower confluence, possible edge with condition
-NO_TRADE = ONLY if ALL true: extreme random chop, no structured range, no level reaction, no trigger, no valid conditional path
-
-CONFIDENCE REFORM: Prioritize LOCATION + TRIGGER + TIMING over confidence alone.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 6: INDICATOR SUGGESTION MODE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-STACK A — Trend: EMA 8, EMA 21, MACD(12,26,9), ADX(14)
-STACK B — Range: RSI(14), Stochastic(14,3,3), BB(20,2)
-STACK C — Breakout: BB(20,2), ADX(14), ATR(14), MACD(12,26,9)
-STACK D — Fast: EMA 8, EMA 21, RSI(7), MACD or SAR
-STACK E — Clean PA: EMA 20/21, RSI(14) or MACD
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 7: MANDATORY FALLBACKS BEFORE NO_TRADE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Fallback A — Indicator Combo Mode
-Fallback B — Range/Box Theory Mode
-Fallback C — Wick+Level Confirmation Mode
-Fallback D — Conditional Breakout/Retest Mode
-ONLY after ALL fallbacks fail may you return NO_TRADE.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION 8: EXECUTION QUALITY & EXPECTANCY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Execution Quality Score (0-10): entry timing, level proximity, confirmation quality, risk location.
-Expectancy Bias Tag: POSITIVE_EXPECTANCY_CANDIDATE / NEUTRAL_EXPECTANCY / NEGATIVE_EXPECTANCY_RISK
+━━━ SECTION 7: FALLBACKS BEFORE NO_TRADE ━━━
+A: Indicator Combo | B: Range/Box Theory | C: Wick+Level | D: Conditional Breakout/Retest
 
 ${marketContext ? `\nAdditional context: ${marketContext}` : ""}`;
+}
 
-    const userPrompt = `Analyze this trading chart with MAXIMUM ACCURACY and DISCIPLINED ENTRY TIMING.
+function buildVisionUserPrompt(activeSession: string, mode?: string) {
+  return `Analyze this trading chart with MAXIMUM ACCURACY and DISCIPLINED ENTRY TIMING.
 
 MANDATORY ANALYSIS STEPS:
-1. REGIME: What is the market environment?
-2. STRUCTURE: HH/HL/LH/LL? BOS? CHOCH?
-3. LOCATION: WHERE is price? At a key level/edge, or mid-nowhere?
-4. PATTERNS: Any tradable patterns?
-5. INDICATORS: What's visible? If missing, suggest best stack.
-6. PRICE ACTION: Wicks, engulfing, pin bars, momentum?
-7. TRIGGER: What CONFIRMS entry?
-8. TIMING: Where is the candle in its life?
-9. SESSION: Is this pair optimal for ${activeSession}?
-10. RISK: Main trap to avoid?
+1. REGIME 2. STRUCTURE 3. LOCATION 4. PATTERNS 5. INDICATORS 6. PRICE ACTION 7. TRIGGER 8. TIMING 9. SESSION (${activeSession}) 10. RISK
 
 OUTPUT FORMAT:
 SIGNAL: BUY / SELL / NO_TRADE
@@ -374,129 +346,128 @@ Risk Note: [1-line caution]
 ${mode === "next-candle" ? "MODE: NEXT CANDLE entry." : "MODE: T+4 protocol."}
 
 If NO_TRADE: List 3+ rejection-proof reasons and confirm all 4 fallbacks were tried.`;
+}
 
-    // Prepare image data for Gemini
-    const imageData = imageBase64.startsWith("data:") 
-      ? imageBase64.split(",")[1] 
-      : imageBase64;
+// ============================================================
+// RESPONSE PARSER
+// ============================================================
 
-    // Use Gemini Vision API directly
-    const visionUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+function parseAnalysis(analysis: string, activeSession: string, mode?: string) {
+  let direction: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
+  if (/SIGNAL:\s*BUY/i.test(analysis)) direction = "BUY";
+  else if (/SIGNAL:\s*SELL/i.test(analysis)) direction = "SELL";
 
-    const visionResponse = await fetch(visionUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{
-          role: "user",
-          parts: [
-            { text: userPrompt },
-            {
-              inlineData: {
-                mimeType: "image/png",
-                data: imageData
-              }
-            }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.08,
-          maxOutputTokens: 2500,
-        },
-      }),
-    });
+  let entryAction = "NO_TRADE";
+  const entryMatch = analysis.match(/ENTRY_ACTION:\s*([\w_]+(?:\[.*?\])?)/i);
+  if (entryMatch) entryAction = entryMatch[1].trim();
+  else if (direction !== "NEUTRAL") entryAction = "ENTER_NOW";
 
-    if (!visionResponse.ok) {
-      const errorText = await visionResponse.text();
-      console.error("Gemini Vision error:", visionResponse.status, errorText);
-      
-      if (visionResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      throw new Error(`Gemini Vision error: ${visionResponse.status}`);
+  let setupGrade = "NO_TRADE";
+  const gradeMatch = analysis.match(/SETUP_GRADE:\s*(A_SETUP|B_SETUP|C_SETUP|NO_TRADE)/i);
+  if (gradeMatch) setupGrade = gradeMatch[1].toUpperCase();
+
+  const confMatch = analysis.match(/CONFIDENCE:\s*(\d{1,3}(?:\.\d)?)%/i);
+  const confidence = confMatch ? parseFloat(confMatch[1]) : 65;
+
+  const conflMatch = analysis.match(/CONFLUENCE_SCORE:\s*(\d+(?:\.\d)?)\s*\/\s*10/i);
+  const confluenceScore = conflMatch ? parseFloat(conflMatch[1]) : 5;
+
+  const execMatch = analysis.match(/EXECUTION_QUALITY:\s*(\d+(?:\.\d)?)\s*\/\s*10/i);
+  const executionQuality = execMatch ? parseFloat(execMatch[1]) : 5;
+
+  const regimeMatch = analysis.match(/MARKET_REGIME:\s*(.+?)(?:\n|$)/i);
+  const marketRegime = regimeMatch ? regimeMatch[1].trim() : "UNKNOWN";
+
+  const stratMatch = analysis.match(/Strategy\s*Used:\s*(.+?)(?:\n|$)/i);
+  const strategyUsed = stratMatch ? stratMatch[1].trim() : "Multi-confluence";
+
+  const expiryMatch = analysis.match(/EXPIRY_SUGGESTION:\s*(.+?)(?:\n|$)/i);
+  const expirySuggestion = expiryMatch ? expiryMatch[1].trim() : "";
+
+  const triggerMatch = analysis.match(/Trigger\s*Condition:\s*(.+?)(?:\n\n|\nStrategy|$)/is);
+  const triggerCondition = triggerMatch ? triggerMatch[1].trim() : "";
+
+  const expectancyMatch = analysis.match(/EXPECTANCY:\s*([\w_]+)/i);
+  const expectancy = expectancyMatch ? expectancyMatch[1].trim() : "NEUTRAL_EXPECTANCY";
+
+  let signalStrength: "high" | "medium" | "low" | "wait" | "conditional" = "wait";
+  if (direction === "NEUTRAL" || setupGrade === "NO_TRADE") {
+    signalStrength = "wait";
+  } else if (entryAction.includes("WAIT") || entryAction.includes("RETEST") || entryAction.includes("BREAK")) {
+    signalStrength = "conditional";
+  } else if (setupGrade === "A_SETUP" && confidence >= 80 && executionQuality >= 7) {
+    signalStrength = "high";
+  } else if ((setupGrade === "A_SETUP" || setupGrade === "B_SETUP") && confidence >= 70) {
+    signalStrength = "medium";
+  } else {
+    signalStrength = "low";
+  }
+
+  return {
+    analysis, direction, confidence: Math.min(99, Math.max(45, confidence)),
+    signalStrength, setupGrade, entryAction, confluenceScore, executionQuality,
+    expectancy, marketRegime, strategyUsed, expirySuggestion, triggerCondition,
+    activeSession, mode: mode || "in-app", timestamp: new Date().toISOString(),
+  };
+}
+
+// ============================================================
+// MAIN HANDLER
+// ============================================================
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const body = await req.json();
+    const { imageBase64, marketContext, market, vector, timeframe, mode } = body;
+    const providers = getProviders();
+    const { activeSession, zambiaTime, utcTime } = getSessionInfo();
+
+    // === ASSISTANT CHAT MODE ===
+    if (mode === "assistant_chat") {
+      const { message, context, history } = body;
+      const chatSystemPrompt = buildChatSystemPrompt(zambiaTime, activeSession, context);
+
+      const reply = await fallbackCall(providers, (p) =>
+        p.callChat(chatSystemPrompt, history || [], message, 0.3, 1000)
+      );
+
+      return new Response(
+        JSON.stringify({ reply }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const visionData = await visionResponse.json();
-    const analysis = visionData.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!analysis) {
-      throw new Error("No analysis received from Gemini");
+    // === CHART ANALYSIS MODE ===
+    if (!imageBase64) {
+      return new Response(
+        JSON.stringify({ error: "No image provided" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // Parse all structured fields from AI output
-    let direction: "BUY" | "SELL" | "NEUTRAL" = "NEUTRAL";
-    if (/SIGNAL:\s*BUY/i.test(analysis)) direction = "BUY";
-    else if (/SIGNAL:\s*SELL/i.test(analysis)) direction = "SELL";
+    const tfContext = timeframe ? `User-selected timeframe: ${timeframe}` : "Detect timeframe from chart";
+    const marketCtx = market ? `Market: ${market} | Vector: ${vector || "Hybrid"}` : "General market";
+    const scanMode = mode === "next-candle"
+      ? "WINDOWS OVERLAY MODE: Analyze for the NEXT candle opening."
+      : "IN-APP MODE: Signal must align with T+4 protocol.";
 
-    let entryAction = "NO_TRADE";
-    const entryMatch = analysis.match(/ENTRY_ACTION:\s*([\w_]+(?:\[.*?\])?)/i);
-    if (entryMatch) entryAction = entryMatch[1].trim();
-    else if (direction !== "NEUTRAL") entryAction = "ENTER_NOW";
+    const systemPrompt = buildVisionSystemPrompt(scanMode, marketCtx, tfContext, utcTime, zambiaTime, activeSession, marketContext);
+    const userPrompt = buildVisionUserPrompt(activeSession, mode);
 
-    let setupGrade = "NO_TRADE";
-    const gradeMatch = analysis.match(/SETUP_GRADE:\s*(A_SETUP|B_SETUP|C_SETUP|NO_TRADE)/i);
-    if (gradeMatch) setupGrade = gradeMatch[1].toUpperCase();
+    const analysis = await fallbackCall(providers, (p) =>
+      p.callVision(systemPrompt, userPrompt, imageBase64, 0.08, 2500)
+    );
 
-    const confMatch = analysis.match(/CONFIDENCE:\s*(\d{1,3}(?:\.\d)?)%/i);
-    const confidence = confMatch ? parseFloat(confMatch[1]) : 65;
+    if (!analysis) throw new Error("No analysis received from any AI provider");
 
-    const conflMatch = analysis.match(/CONFLUENCE_SCORE:\s*(\d+(?:\.\d)?)\s*\/\s*10/i);
-    const confluenceScore = conflMatch ? parseFloat(conflMatch[1]) : 5;
-
-    const execMatch = analysis.match(/EXECUTION_QUALITY:\s*(\d+(?:\.\d)?)\s*\/\s*10/i);
-    const executionQuality = execMatch ? parseFloat(execMatch[1]) : 5;
-
-    const regimeMatch = analysis.match(/MARKET_REGIME:\s*(.+?)(?:\n|$)/i);
-    const marketRegime = regimeMatch ? regimeMatch[1].trim() : "UNKNOWN";
-
-    const stratMatch = analysis.match(/Strategy\s*Used:\s*(.+?)(?:\n|$)/i);
-    const strategyUsed = stratMatch ? stratMatch[1].trim() : "Multi-confluence";
-
-    const expiryMatch = analysis.match(/EXPIRY_SUGGESTION:\s*(.+?)(?:\n|$)/i);
-    const expirySuggestion = expiryMatch ? expiryMatch[1].trim() : "";
-
-    const triggerMatch = analysis.match(/Trigger\s*Condition:\s*(.+?)(?:\n\n|\nStrategy|$)/is);
-    const triggerCondition = triggerMatch ? triggerMatch[1].trim() : "";
-
-    const expectancyMatch = analysis.match(/EXPECTANCY:\s*([\w_]+)/i);
-    const expectancy = expectancyMatch ? expectancyMatch[1].trim() : "NEUTRAL_EXPECTANCY";
-
-    let signalStrength: "high" | "medium" | "low" | "wait" | "conditional" = "wait";
-    if (direction === "NEUTRAL" || setupGrade === "NO_TRADE") {
-      signalStrength = "wait";
-    } else if (entryAction.includes("WAIT") || entryAction.includes("RETEST") || entryAction.includes("BREAK")) {
-      signalStrength = "conditional";
-    } else if (setupGrade === "A_SETUP" && confidence >= 80 && executionQuality >= 7) {
-      signalStrength = "high";
-    } else if ((setupGrade === "A_SETUP" || setupGrade === "B_SETUP") && confidence >= 70) {
-      signalStrength = "medium";
-    } else {
-      signalStrength = "low";
-    }
+    const result = parseAnalysis(analysis, activeSession, mode);
 
     return new Response(
-      JSON.stringify({
-        analysis,
-        direction,
-        confidence: Math.min(99, Math.max(45, confidence)),
-        signalStrength,
-        setupGrade,
-        entryAction,
-        confluenceScore,
-        executionQuality,
-        expectancy,
-        marketRegime,
-        strategyUsed,
-        expirySuggestion,
-        triggerCondition,
-        activeSession,
-        mode: mode || "in-app",
-        timestamp: new Date().toISOString()
-      }),
+      JSON.stringify(result),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
