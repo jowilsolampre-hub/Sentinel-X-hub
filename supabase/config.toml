@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.binance]
 verify_jwt = false
+
+[functions.analyze-trend]
+verify_jwt = false
