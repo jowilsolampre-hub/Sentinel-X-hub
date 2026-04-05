@@ -425,6 +425,8 @@ const Index = () => {
           <TabsContent value="analytics" className="space-y-4">
             <PerformanceDashboard />
             
+            <MonthlyWinRateReport />
+            
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <PerformanceStats signals={signals} />
               
