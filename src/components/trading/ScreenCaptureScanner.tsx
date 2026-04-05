@@ -32,6 +32,12 @@ interface AnalysisResult {
   expirySuggestion?: string;
   triggerCondition?: string;
   timestamp: string;
+  // Indicator optimization fields
+  indicatorsViable?: string | null;
+  bestIndicatorStack?: string | null;
+  suggestedIndicators?: string[];
+  optimalTimeframe?: string | null;
+  timeframeReason?: string | null;
 }
 
 interface Position { x: number; y: number; }
