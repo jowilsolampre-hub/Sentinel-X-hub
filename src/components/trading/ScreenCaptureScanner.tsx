@@ -423,6 +423,37 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
                     </div>
                   )}
 
+                  {/* Indicator Optimization */}
+                  {result.suggestedIndicators && result.suggestedIndicators.length > 0 && (
+                    <div className="px-2 py-2 bg-accent/10 rounded-lg border border-accent/30">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <BarChart3 className="w-3 h-3 text-accent" />
+                        <p className="text-[10px] font-bold text-accent">
+                          {result.indicatorsViable === "NO" ? "⚠️ WRONG INDICATORS" : result.indicatorsViable === "PARTIAL" ? "📊 ADD THESE INDICATORS" : "💡 SUGGESTED INDICATORS"}
+                        </p>
+                        {result.bestIndicatorStack && (
+                          <Badge variant="outline" className="text-[9px] h-4 ml-auto border-accent/50 text-accent">
+                            Stack {result.bestIndicatorStack}
+                          </Badge>
+                        )}
+                      </div>
+                      {result.suggestedIndicators.map((ind, i) => (
+                        <p key={i} className="text-[10px] text-muted-foreground ml-2">• {ind}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Optimal Timeframe Suggestion */}
+                  {result.optimalTimeframe && result.timeframeReason && (
+                    <div className="px-2 py-1.5 bg-primary/10 rounded border border-primary/20">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3 h-3 text-primary" />
+                        <p className="text-[10px] text-primary font-medium">Optimal TF: {result.optimalTimeframe}</p>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground ml-4">{result.timeframeReason}</p>
+                    </div>
+                  )}
+
                   {/* Full analysis */}
                   <div className="p-2.5 bg-secondary/30 rounded-lg border border-border/50 max-h-48 overflow-y-auto">
                     <pre className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap font-sans">{result.analysis}</pre>
