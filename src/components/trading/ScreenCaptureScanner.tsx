@@ -58,7 +58,7 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const autoScanTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoScanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const tfMinutes = getTimeframeMinutes(timeframe || "5m");
 
