@@ -229,7 +229,7 @@ const analyzePatternForTF = (pair: string, isOTC: boolean, tf: Timeframe): Analy
 
   // Timeframe multiplier — higher TFs get confidence boost for trend signals
   const tfMultiplier: Record<Timeframe, number> = {
-    "1M": 0.95, "5M": 1.0, "15M": 1.05, "30M": 1.08, "1H": 1.12, "4H": 1.15, "24H": 1.1
+    "1M": 0.95, "5M": 1.0, "15M": 1.05, "30M": 1.08, "1H": 1.12, "4H": 1.15, "1D": 1.1
   };
   const mult = tfMultiplier[tf] || 1.0;
 
