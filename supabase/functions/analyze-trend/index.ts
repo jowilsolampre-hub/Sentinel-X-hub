@@ -308,6 +308,7 @@ ${marketContext ? `\nAdditional context: ${marketContext}` : ""}`;
 
 function buildVisionUserPrompt(activeSession: string, mode?: string) {
   return `Analyze this trading chart with MAXIMUM ACCURACY and DISCIPLINED ENTRY TIMING.
+You MUST pick the BEST possible outcome. If the current timeframe is not ideal, SUGGEST a better one.
 
 MANDATORY ANALYSIS STEPS:
 1. REGIME 2. STRUCTURE 3. LOCATION 4. PATTERNS 5. INDICATORS 6. PRICE ACTION 7. TRIGGER 8. TIMING 9. SESSION (${activeSession}) 10. RISK
@@ -330,10 +331,32 @@ Market Structure: [HH/HL/LH/LL status]
 Pattern Detected: [best tradable pattern]
 
 Indicators Status:
-• [indicator readings]
+• [indicator readings if visible on chart]
 
-Suggested Indicators (if chart is clean):
-• [indicator name (period/settings) — what it confirms]
+━━━ INDICATOR OPTIMIZATION (MANDATORY) ━━━
+ALWAYS include this section. Analyze whether the chart's current indicators are OPTIMAL for the detected regime.
+
+CURRENT_INDICATORS_VIABLE: YES / NO / PARTIAL
+BEST_INDICATOR_STACK: [A/B/C/D/E from stacks below]
+
+If indicators are missing, wrong for regime, or suboptimal:
+SUGGESTED_INDICATORS:
+• [Indicator Name] (Period: [X]) — [What it confirms for THIS specific setup]
+• [Indicator Name] (Period: [X]) — [What it confirms]
+• [Indicator Name] (Period: [X]) — [What it confirms]
+
+INDICATOR STACKS REFERENCE:
+A (Trend): EMA(8) + EMA(21) + MACD(12,26,9) + ADX(14) → Best for trending markets
+B (Range/Reversal): RSI(14) + Stochastic(14,3,3) + BB(20,2) → Best for ranging/reversal
+C (Breakout): BB(20,2) + ADX(14) + ATR(14) + MACD → Best for breakout detection
+D (Fast/Binary): EMA(8) + EMA(21) + RSI(7) + SAR(0.02,0.2) → Best for OTC/binary 1-5min
+E (Clean PA): EMA(21) + RSI(14) → Minimal, for strong price-action-dominant charts
+
+For Binary Options: Always suggest Stack D or B with 1-3 candle expiry reasoning.
+For Real Markets: Match stack to detected regime (Trend→A, Range→B, Breakout→C).
+
+OPTIMAL_TIMEFRAME: [current TF] or [better TF if current is suboptimal]
+TIMEFRAME_REASON: [why this TF is best or why to switch]
 
 Key Levels:
 • Support / Resistance / Entry Zone / Stop
@@ -346,7 +369,7 @@ Risk Note: [1-line caution]
 ${mode === "next-candle" ? "MODE: NEXT CANDLE entry." : "MODE: T+4 protocol."}
 
 If NO_TRADE: List 3+ rejection-proof reasons and confirm all 4 fallbacks were tried.`;
-}
+}`
 
 // ============================================================
 // RESPONSE PARSER
