@@ -25,6 +25,7 @@ import { IntelligencePanel } from "@/components/trading/IntelligencePanel";
 import { GuruStrategyPanel } from "@/components/trading/GuruStrategyPanel";
 import { AITrendScanner } from "@/components/trading/AITrendScanner";
 import { PerformanceDashboard } from "@/components/trading/PerformanceDashboard";
+import { MonthlyWinRateReport } from "@/components/trading/MonthlyWinRateReport";
 import { FloatingWindowButton } from "@/components/trading/FloatingWindowButton";
 import { ScreenCaptureScanner } from "@/components/trading/ScreenCaptureScanner";
 import { DasomtmfxAssistant } from "@/components/assistant/DasomtmfxAssistant";
@@ -423,6 +424,8 @@ const Index = () => {
           {/* === ANALYTICS TAB === */}
           <TabsContent value="analytics" className="space-y-4">
             <PerformanceDashboard />
+            
+            <MonthlyWinRateReport />
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <PerformanceStats signals={signals} />
