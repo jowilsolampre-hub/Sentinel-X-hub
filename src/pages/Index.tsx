@@ -25,6 +25,7 @@ import { IntelligencePanel } from "@/components/trading/IntelligencePanel";
 import { GuruStrategyPanel } from "@/components/trading/GuruStrategyPanel";
 import { AITrendScanner } from "@/components/trading/AITrendScanner";
 import { PerformanceDashboard } from "@/components/trading/PerformanceDashboard";
+import { MonthlyWinRateReport } from "@/components/trading/MonthlyWinRateReport";
 import { FloatingWindowButton } from "@/components/trading/FloatingWindowButton";
 import { ScreenCaptureScanner } from "@/components/trading/ScreenCaptureScanner";
 import { DasomtmfxAssistant } from "@/components/assistant/DasomtmfxAssistant";
