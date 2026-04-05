@@ -369,7 +369,7 @@ Risk Note: [1-line caution]
 ${mode === "next-candle" ? "MODE: NEXT CANDLE entry." : "MODE: T+4 protocol."}
 
 If NO_TRADE: List 3+ rejection-proof reasons and confirm all 4 fallbacks were tried.`;
-}`
+}
 
 // ============================================================
 // RESPONSE PARSER
