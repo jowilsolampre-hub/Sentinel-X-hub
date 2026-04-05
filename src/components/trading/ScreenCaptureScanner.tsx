@@ -32,6 +32,12 @@ interface AnalysisResult {
   expirySuggestion?: string;
   triggerCondition?: string;
   timestamp: string;
+  // Indicator optimization fields
+  indicatorsViable?: string | null;
+  bestIndicatorStack?: string | null;
+  suggestedIndicators?: string[];
+  optimalTimeframe?: string | null;
+  timeframeReason?: string | null;
 }
 
 interface Position { x: number; y: number; }
@@ -58,7 +64,7 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const autoScanTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoScanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const tfMinutes = getTimeframeMinutes(timeframe || "5m");
 
@@ -414,6 +420,37 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
                   {result.expirySuggestion && (
                     <div className="px-2 py-1 bg-secondary/30 rounded border border-border/30">
                       <p className="text-[10px] text-muted-foreground">Expiry: <span className="text-foreground font-medium">{result.expirySuggestion}</span></p>
+                    </div>
+                  )}
+
+                  {/* Indicator Optimization */}
+                  {result.suggestedIndicators && result.suggestedIndicators.length > 0 && (
+                    <div className="px-2 py-2 bg-accent/10 rounded-lg border border-accent/30">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <BarChart3 className="w-3 h-3 text-accent" />
+                        <p className="text-[10px] font-bold text-accent">
+                          {result.indicatorsViable === "NO" ? "⚠️ WRONG INDICATORS" : result.indicatorsViable === "PARTIAL" ? "📊 ADD THESE INDICATORS" : "💡 SUGGESTED INDICATORS"}
+                        </p>
+                        {result.bestIndicatorStack && (
+                          <Badge variant="outline" className="text-[9px] h-4 ml-auto border-accent/50 text-accent">
+                            Stack {result.bestIndicatorStack}
+                          </Badge>
+                        )}
+                      </div>
+                      {result.suggestedIndicators.map((ind, i) => (
+                        <p key={i} className="text-[10px] text-muted-foreground ml-2">• {ind}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Optimal Timeframe Suggestion */}
+                  {result.optimalTimeframe && result.timeframeReason && (
+                    <div className="px-2 py-1.5 bg-primary/10 rounded border border-primary/20">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3 h-3 text-primary" />
+                        <p className="text-[10px] text-primary font-medium">Optimal TF: {result.optimalTimeframe}</p>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground ml-4">{result.timeframeReason}</p>
                     </div>
                   )}
 

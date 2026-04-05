@@ -102,8 +102,8 @@ export const useSignalEngine = (options: UseSignalEngineOptions = {}): UseSignal
     selectedPairs: options.selectedPairs
   });
 
-  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const updateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const [sessionLock, setSessionLock] = useState<SessionLockInfo>({
     isLocked: false,
