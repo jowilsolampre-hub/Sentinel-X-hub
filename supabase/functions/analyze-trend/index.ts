@@ -413,6 +413,27 @@ function parseAnalysis(analysis: string, activeSession: string, mode?: string) {
   const expectancyMatch = analysis.match(/EXPECTANCY:\s*([\w_]+)/i);
   const expectancy = expectancyMatch ? expectancyMatch[1].trim() : "NEUTRAL_EXPECTANCY";
 
+  // Parse indicator optimization fields
+  const indicatorsViableMatch = analysis.match(/CURRENT_INDICATORS_VIABLE:\s*(YES|NO|PARTIAL)/i);
+  const indicatorsViable = indicatorsViableMatch ? indicatorsViableMatch[1].toUpperCase() : null;
+
+  const bestStackMatch = analysis.match(/BEST_INDICATOR_STACK:\s*([A-E])/i);
+  const bestIndicatorStack = bestStackMatch ? bestStackMatch[1].toUpperCase() : null;
+
+  // Extract suggested indicators
+  const suggestedIndicators: string[] = [];
+  const suggestedSection = analysis.match(/SUGGESTED_INDICATORS:\s*([\s\S]*?)(?:\n\n|INDICATOR STACKS|OPTIMAL_TIMEFRAME|Key Levels|$)/i);
+  if (suggestedSection) {
+    const lines = suggestedSection[1].split("\n").filter(l => l.trim().startsWith("•") || l.trim().startsWith("-"));
+    lines.forEach(l => suggestedIndicators.push(l.replace(/^[•\-]\s*/, "").trim()));
+  }
+
+  const optimalTfMatch = analysis.match(/OPTIMAL_TIMEFRAME:\s*(.+?)(?:\n|$)/i);
+  const optimalTimeframe = optimalTfMatch ? optimalTfMatch[1].trim() : null;
+
+  const tfReasonMatch = analysis.match(/TIMEFRAME_REASON:\s*(.+?)(?:\n|$)/i);
+  const timeframeReason = tfReasonMatch ? tfReasonMatch[1].trim() : null;
+
   let signalStrength: "high" | "medium" | "low" | "wait" | "conditional" = "wait";
   if (direction === "NEUTRAL" || setupGrade === "NO_TRADE") {
     signalStrength = "wait";
@@ -431,6 +452,9 @@ function parseAnalysis(analysis: string, activeSession: string, mode?: string) {
     signalStrength, setupGrade, entryAction, confluenceScore, executionQuality,
     expectancy, marketRegime, strategyUsed, expirySuggestion, triggerCondition,
     activeSession, mode: mode || "in-app", timestamp: new Date().toISOString(),
+    // New indicator optimization fields
+    indicatorsViable, bestIndicatorStack, suggestedIndicators,
+    optimalTimeframe, timeframeReason,
   };
 }
 
