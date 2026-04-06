@@ -252,7 +252,7 @@ const Index = () => {
             />
             <FloatingWindowButton />
             <ScreenCaptureScanner market={marketCategory} vector={selectedVector} timeframe={selectedTimeframes[0]} />
-          </div>
+            <JoyridePanel />
         </div>
 
         {/* === ENGINE CONTROL PANEL === */}
