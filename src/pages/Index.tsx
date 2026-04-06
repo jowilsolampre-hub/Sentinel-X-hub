@@ -254,6 +254,7 @@ const Index = () => {
             <ScreenCaptureScanner market={marketCategory} vector={selectedVector} timeframe={selectedTimeframes[0]} />
             <JoyridePanel />
           </div>
+        </div>
 
         {/* === ENGINE CONTROL PANEL === */}
         <EngineControlPanel
