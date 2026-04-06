@@ -42,11 +42,16 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
   const [config, setConfig] = useState<JoyrideConfig>(DEFAULT_JOYRIDE_CONFIG);
   const [lastSignal, setLastSignal] = useState<JoyrideSignal | null>(null);
 
-  if (!JOYRIDE_PRO_PACK_ENABLED) return null;
-
   const session = getSessionInfo();
   const preset = getPreset(config.selectedPreset);
   const presets = getAllPresets();
+
+  const pairRankings = useMemo(() => {
+    if (!config.pairRanking) return [];
+    return rankPairs([], chartState || {});
+  }, [config.pairRanking, chartState]);
+
+  if (!JOYRIDE_PRO_PACK_ENABLED) return null;
 
   const updateConfig = (updates: Partial<JoyrideConfig>) => {
     setConfig(prev => ({ ...prev, ...updates }));
