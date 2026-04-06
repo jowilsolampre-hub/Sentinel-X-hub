@@ -29,6 +29,7 @@ import { MonthlyWinRateReport } from "@/components/trading/MonthlyWinRateReport"
 import { FloatingWindowButton } from "@/components/trading/FloatingWindowButton";
 import { ScreenCaptureScanner } from "@/components/trading/ScreenCaptureScanner";
 import { DasomtmfxAssistant } from "@/components/assistant/DasomtmfxAssistant";
+import { JoyridePanel } from "@/components/trading/JoyridePanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
