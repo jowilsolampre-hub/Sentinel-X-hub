@@ -73,11 +73,6 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
     if (result) setLastSignal(result);
   };
 
-  const pairRankings = useMemo(() => {
-    if (!config.pairRanking) return [];
-    return rankPairs([], chartState || {});
-  }, [config.pairRanking, chartState]);
-
   const logs = getJoyrideLogs();
 
   const directionIcon = (dir: string) => {
