@@ -95,4 +95,6 @@ export interface JoyrideLog {
   reasons: string[];
   noTradeReasons: string[];
   screenshotRef?: string;
+  selectorResult?: string;
+  autoSelectedPreset?: string;
 }
