@@ -7,6 +7,7 @@ import { getAllPresets, getPreset } from "@/modules/joyride/presets";
 import { joyrideEvaluate, getJoyrideLogs, clearJoyrideLogs, ChartState } from "@/modules/joyride/engine";
 import { rankPairs } from "@/modules/joyride/pairRanker";
 import { getSessionInfo } from "@/modules/joyride/sessionEngine";
+import { selectBestPreset, PresetSelectorResult } from "@/modules/joyride/presetSelector";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +33,8 @@ import {
   CheckCircle2,
   XCircle,
   ChevronRight,
+  Brain,
+  Lock,
 } from "lucide-react";
 
 interface JoyridePanelProps {
@@ -41,6 +44,8 @@ interface JoyridePanelProps {
 export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
   const [config, setConfig] = useState<JoyrideConfig>(DEFAULT_JOYRIDE_CONFIG);
   const [lastSignal, setLastSignal] = useState<JoyrideSignal | null>(null);
+  const [lastSelector, setLastSelector] = useState<PresetSelectorResult | null>(null);
+  const [autoSelectMode, setAutoSelectMode] = useState(false);
 
   const session = getSessionInfo();
   const preset = getPreset(config.selectedPreset);
@@ -69,7 +74,38 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
       signalsThisSession: 0,
       recentLosses: 0,
     };
-    const result = joyrideEvaluate(chart, config);
+
+    // Run preset selector
+    const selectorResult = selectBestPreset(chart, autoSelectMode ? null : config.selectedPreset);
+    setLastSelector(selectorResult);
+
+    // If auto-select and a preset was chosen, use it
+    let activeConfig = config;
+    if (autoSelectMode && selectorResult.selectedPresetId) {
+      activeConfig = { ...config, selectedPreset: selectorResult.selectedPresetId };
+    }
+
+    // If selector says NO_TRADE in auto mode
+    if (autoSelectMode && selectorResult.selectorResult === "NO_TRADE") {
+      setLastSignal({
+        preset: "Auto-Select",
+        pair: chart.pair || "Unknown",
+        timeframe: "-",
+        expiry: "-",
+        direction: "NO_TRADE",
+        confidence: 0,
+        reasons: [],
+        avoidIf: selectorResult.whySelected,
+        entryWindowSeconds: 0,
+        patternLabel: "No valid preset",
+        sessionSuitability: 0,
+        invalidation: [],
+        setupChecklist: [],
+      });
+      return;
+    }
+
+    const result = joyrideEvaluate(chart, activeConfig);
     if (result) setLastSignal(result);
   };
 
@@ -84,6 +120,14 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
   const confidenceColor = (c: number) => {
     if (c >= 80) return "text-success";
     if (c >= 65) return "text-warning";
+    return "text-destructive";
+  };
+
+  const scoreColor = (score: number, blocked: boolean) => {
+    if (blocked) return "text-muted-foreground";
+    if (score >= 80) return "text-success";
+    if (score >= 65) return "text-warning";
+    if (score >= 50) return "text-orange-400";
     return "text-destructive";
   };
 
@@ -143,6 +187,9 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
               <TabsTrigger value="signal" className="flex-1 gap-1 text-xs">
                 <Target className="w-3 h-3" /> Signal
               </TabsTrigger>
+              <TabsTrigger value="selector" className="flex-1 gap-1 text-xs">
+                <Brain className="w-3 h-3" /> Selector
+              </TabsTrigger>
               <TabsTrigger value="pairs" className="flex-1 gap-1 text-xs">
                 <BarChart3 className="w-3 h-3" /> Pairs
               </TabsTrigger>
@@ -153,9 +200,23 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
 
             {/* SETUP TAB */}
             <TabsContent value="setup" className="space-y-3">
+              {/* Auto Select Toggle */}
+              <Card className="p-3 border border-primary/30 bg-primary/5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium flex items-center gap-1">
+                      <Brain className="w-4 h-4 text-primary" />
+                      Auto-Select Preset
+                    </p>
+                    <p className="text-xs text-muted-foreground">AI picks the best preset for current market</p>
+                  </div>
+                  <Switch checked={autoSelectMode} onCheckedChange={setAutoSelectMode} />
+                </div>
+              </Card>
+
               {/* Preset Selector */}
-              <div>
-                <p className="text-xs text-muted-foreground mb-1 font-medium">PRESET</p>
+              <div className={autoSelectMode ? "opacity-50 pointer-events-none" : ""}>
+                <p className="text-xs text-muted-foreground mb-1 font-medium">PRESET {autoSelectMode && "(AUTO)"}</p>
                 <Select
                   value={config.selectedPreset}
                   onValueChange={(v) => updateConfig({ selectedPreset: v as JoyridePresetId })}
@@ -258,9 +319,21 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
                 Run JOYRIDE Evaluation
               </Button>
 
+              {/* Selector summary when auto-mode */}
+              {autoSelectMode && lastSelector && lastSelector.selectorResult !== "NO_TRADE" && (
+                <Card className="p-3 border border-primary/30 bg-primary/5">
+                  <p className="text-xs font-medium mb-1 flex items-center gap-1">
+                    <Brain className="w-3 h-3 text-primary" />
+                    AUTO-SELECTED: {lastSelector.selectedPresetName}
+                  </p>
+                  {lastSelector.whySelected.slice(0, 3).map((w, i) => (
+                    <p key={i} className="text-xs text-muted-foreground">{w}</p>
+                  ))}
+                </Card>
+              )}
+
               {lastSignal && (
                 <Card className="p-4 border border-border/50 space-y-3">
-                  {/* Direction Header */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {directionIcon(lastSignal.direction)}
@@ -280,7 +353,6 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
                     <div><span className="text-muted-foreground">Session:</span> {lastSignal.sessionSuitability}%</div>
                   </div>
 
-                  {/* Reasons */}
                   {config.explainSignal && lastSignal.reasons.length > 0 && (
                     <div>
                       <p className="text-xs font-medium text-success mb-1">✓ REASONS</p>
@@ -293,7 +365,6 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
                     </div>
                   )}
 
-                  {/* Avoid If */}
                   {lastSignal.avoidIf.length > 0 && (
                     <div>
                       <p className="text-xs font-medium text-warning mb-1">⚠ AVOID IF</p>
@@ -306,7 +377,6 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
                     </div>
                   )}
 
-                  {/* Invalidation */}
                   {lastSignal.invalidation.length > 0 && (
                     <div>
                       <p className="text-xs font-medium text-destructive mb-1">✕ INVALIDATION</p>
@@ -319,7 +389,6 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
                     </div>
                   )}
 
-                  {/* Setup Checklist */}
                   {config.autoSetupHelper && lastSignal.setupChecklist.length > 0 && (
                     <div className="bg-secondary/30 p-3 rounded-lg">
                       <p className="text-xs font-medium mb-1">📋 BROKER SETUP</p>
@@ -338,6 +407,121 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
                 <Card className="p-6 border border-border/50 text-center">
                   <Target className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">Click "Run Evaluation" or wait for scanner to feed data</p>
+                </Card>
+              )}
+            </TabsContent>
+
+            {/* SELECTOR TAB */}
+            <TabsContent value="selector" className="space-y-3">
+              <Card className="p-3 border border-primary/30 bg-primary/5">
+                <p className="text-xs font-medium mb-1 flex items-center gap-1">
+                  <Brain className="w-4 h-4 text-primary" /> PRESET SELECTOR ENGINE
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  AI scores all presets against current market conditions and auto-selects the best one
+                </p>
+              </Card>
+
+              <Button onClick={runEvaluation} disabled={!config.enabled} variant="outline" className="w-full gap-2">
+                <Brain className="w-4 h-4" />
+                Score All Presets
+              </Button>
+
+              {lastSelector && (
+                <>
+                  {/* Selection Result */}
+                  <Card className={`p-3 border ${
+                    lastSelector.selectorResult === "SELECTED" ? "border-success/50 bg-success/5" :
+                    lastSelector.selectorResult === "FALLBACK_SAFE_MODE" ? "border-warning/50 bg-warning/5" :
+                    "border-destructive/50 bg-destructive/5"
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-bold">
+                        {lastSelector.selectorResult === "SELECTED" && "✅ PRESET SELECTED"}
+                        {lastSelector.selectorResult === "NO_TRADE" && "🚫 NO TRADE"}
+                        {lastSelector.selectorResult === "FALLBACK_SAFE_MODE" && "🛡️ FALLBACK → SAFE MODE"}
+                      </p>
+                      <Badge variant="outline" className="text-xs">
+                        {lastSelector.selectionMode}
+                      </Badge>
+                    </div>
+                    {lastSelector.selectedPresetName && (
+                      <p className="text-lg font-bold">{lastSelector.selectedPresetName}</p>
+                    )}
+                    <div className="mt-2 space-y-1">
+                      {lastSelector.whySelected.map((w, i) => (
+                        <p key={i} className="text-xs text-muted-foreground flex items-start gap-1">
+                          <ChevronRight className="w-3 h-3 mt-0.5 shrink-0 text-primary" />
+                          {w}
+                        </p>
+                      ))}
+                    </div>
+                  </Card>
+
+                  {/* Preset Score Table */}
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">PRESET SCORES</p>
+                    {lastSelector.presetScores.map((item) => (
+                      <Card key={item.presetId} className={`p-2.5 border ${
+                        item.blocked ? "border-destructive/20 opacity-60" :
+                        item.presetId === lastSelector.selectedPresetId ? "border-primary/50 bg-primary/5" :
+                        "border-border/30"
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {item.blocked ? (
+                              <Lock className="w-3.5 h-3.5 text-destructive" />
+                            ) : item.presetId === lastSelector.selectedPresetId ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+                            ) : (
+                              <div className="w-3.5 h-3.5" />
+                            )}
+                            <span className="text-sm font-medium">{item.presetName}</span>
+                          </div>
+                          <span className={`text-sm font-mono font-bold ${scoreColor(item.score, item.blocked)}`}>
+                            {item.blocked ? "BLOCKED" : item.score}
+                          </span>
+                        </div>
+
+                        {/* Reasons/penalties compact */}
+                        {(item.reasons.length > 0 || item.penalties.length > 0 || item.blockReasons.length > 0) && (
+                          <div className="mt-1.5 space-y-0.5">
+                            {item.reasons.slice(0, 2).map((r, i) => (
+                              <p key={`r${i}`} className="text-[10px] text-success/80 pl-5">{r}</p>
+                            ))}
+                            {item.penalties.slice(0, 2).map((p, i) => (
+                              <p key={`p${i}`} className="text-[10px] text-warning/80 pl-5">{p}</p>
+                            ))}
+                            {item.blockReasons.map((b, i) => (
+                              <p key={`b${i}`} className="text-[10px] text-destructive/80 pl-5">🚫 {b}</p>
+                            ))}
+                          </div>
+                        )}
+                      </Card>
+                    ))}
+                  </div>
+
+                  {/* Blocked Presets Summary */}
+                  {lastSelector.blockedPresets.length > 0 && (
+                    <Card className="p-3 border border-destructive/20 bg-destructive/5">
+                      <p className="text-xs font-medium text-destructive mb-1">
+                        🚫 BLOCKED ({lastSelector.blockedPresets.length})
+                      </p>
+                      {lastSelector.blockedPresets.map((bp, i) => (
+                        <div key={i} className="text-xs text-muted-foreground">
+                          <span className="font-medium">{bp.presetName}:</span>{" "}
+                          {bp.blockReasons.join(", ")}
+                        </div>
+                      ))}
+                    </Card>
+                  )}
+                </>
+              )}
+
+              {!lastSelector && (
+                <Card className="p-6 border border-border/50 text-center">
+                  <Brain className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Click "Score All Presets" to see the ranking</p>
                 </Card>
               )}
             </TabsContent>
