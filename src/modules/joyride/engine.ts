@@ -15,6 +15,8 @@ export const clearJoyrideLogs = () => { joyrideLogStore.length = 0; };
 export interface ChartState {
   pair?: string;
   timeframe?: string;
+  session?: string;
+  marketType?: string;
   trendDirection?: "up" | "down" | "range" | "chop";
   candleStrength?: number;
   bodyWickRatio?: number;
