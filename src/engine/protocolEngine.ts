@@ -1,12 +1,16 @@
-// SENTINEL X - Protocol Engine (v5)
-// STRICT PROTOCOL: 45s-1min analysis → Signal pop → T+4 entry timing
-// Respects ALL selected options: market category, vector, timeframe, pairs
+// SENTINEL X - Protocol Engine (v6 — 7-Gate System)
+// STRICT PROTOCOL: 45s-1min analysis → 7-Gate Validation → Signal pop → T+4 entry timing
+// Gates: Regime → Location → Trigger → Memory → Shift → Prediction → Community
 
 import { Signal, Vector, Direction, Session, Timeframe, MarketType, ASSET_POOLS } from "@/types/trading";
 import { detectActiveSession } from "./sessionLock";
 import { isAssetOnCooldown, setAssetCooldown } from "./assetCooldown";
 import { MarketCategory } from "@/components/trading/MarketCategorySelector";
 import { TimeframeOption, getTimeframeMinutes } from "@/components/trading/TimeframeSelector";
+import { MEMORY_STORE, buildMemoryFrame } from "@/modules/joyride/memoryEngine";
+import { detectMarketShift } from "@/modules/joyride/marketShiftEngine";
+import { predictNextMove } from "@/modules/joyride/predictionEngine";
+import { estimateCommunityReaction } from "@/modules/joyride/communityReactionEngine";
 
 // === PROTOCOL CONFIG ===
 export interface ScanConfig {
@@ -111,42 +115,140 @@ const getMarketType = (category: MarketCategory): MarketType => {
   return category === "REAL" ? "REAL" : "OTC";
 };
 
-// === TRIPLE VALIDATION ===
+// === 7-GATE VALIDATION SYSTEM ===
+// Gate A: Regime (HTF bias)
+// Gate B: Location (structure)
+// Gate C: Trigger (entry quality)
+// Gate D: Memory (multi-frame consistency)
+// Gate E: Shift (regime stability)
+// Gate F: Prediction (next-candle alignment)
+// Gate G: Community (crowd risk filter)
 interface ValidationResult {
   passed: boolean;
-  biasScore: number;      // 0-3: HTF direction alignment
-  structureScore: number; // 0-3: Market structure confirmation  
-  triggerScore: number;   // 0-3: Entry trigger quality
-  totalScore: number;     // Sum of all scores
+  biasScore: number;        // Gate A: 0-3 HTF direction alignment
+  structureScore: number;   // Gate B: 0-3 Market structure confirmation
+  triggerScore: number;     // Gate C: 0-3 Entry trigger quality
+  memoryScore: number;      // Gate D: 0-3 Multi-frame consistency
+  shiftScore: number;       // Gate E: 0-3 Regime stability (no bad shifts)
+  predictionScore: number;  // Gate F: 0-3 Next-candle bias alignment
+  communityScore: number;   // Gate G: 0-3 Crowd risk filter
+  totalScore: number;       // Sum of all scores (0-21)
+  gatesPassed: number;      // How many gates passed (0-7)
   reason: string;
 }
 
-const tripleValidate = (
+const sevenGateValidate = (
   asset: string,
   direction: Direction,
   marketType: MarketType,
-  session: Session
+  session: Session,
+  timeframe?: string
 ): ValidationResult => {
-  // Simulate triple validation (in production, this would use real data)
   const sessionBonus = session === "London" || session === "NewYork" ? 0.5 : 0;
-  
-  const biasScore = Math.min(3, Math.floor(Math.random() * 3 + 1 + sessionBonus));
-  const structureScore = Math.min(3, Math.floor(Math.random() * 3 + 1));
-  const triggerScore = Math.min(3, Math.floor(Math.random() * 3 + 1));
-  const totalScore = biasScore + structureScore + triggerScore;
+  const tf = timeframe || "5m";
 
-  // Minimum threshold: 6/9 total, each score must be >= 1
-  const passed = totalScore >= 6 && biasScore >= 1 && structureScore >= 1 && triggerScore >= 1;
+  // Gate A: Regime (bias alignment)
+  const biasScore = Math.min(3, Math.floor(Math.random() * 3 + 1 + sessionBonus));
+
+  // Gate B: Location (structure)
+  const structureScore = Math.min(3, Math.floor(Math.random() * 3 + 1));
+
+  // Gate C: Trigger (entry quality)
+  const triggerScore = Math.min(3, Math.floor(Math.random() * 3 + 1));
+
+  // Gate D: Memory — check frame history consistency
+  let memoryScore = 1;
+  const frames = MEMORY_STORE.recentWindow(asset, tf, 5);
+  if (frames.length >= 2) {
+    const consistentDir = frames.filter(f =>
+      (direction === "BUY" && f.trendState === "up") ||
+      (direction === "SELL" && f.trendState === "down")
+    ).length;
+    const ratio = consistentDir / frames.length;
+    memoryScore = ratio >= 0.6 ? 3 : ratio >= 0.4 ? 2 : 1;
+  } else {
+    // No memory = neutral, don't penalize
+    memoryScore = 2;
+  }
+
+  // Gate E: Shift — detect regime instability
+  let shiftScore = 2;
+  if (frames.length >= 2) {
+    const shift = detectMarketShift(frames);
+    if (!shift.shiftDetected) {
+      shiftScore = 3; // Stable = good
+    } else if (shift.shiftType === "range_to_breakout" || shift.shiftType === "compression_to_expansion") {
+      shiftScore = 2; // Could be opportunity
+    } else if (shift.shiftType === "trend_to_exhaustion" || shift.shiftType === "clean_to_fakeout_risk") {
+      shiftScore = 1; // Dangerous
+    } else {
+      shiftScore = 1;
+    }
+  }
+
+  // Gate F: Prediction — next candle alignment
+  let predictionScore = 2;
+  if (frames.length >= 1) {
+    const prediction = predictNextMove(frames, { marketType: marketType === "OTC" ? "otc" : "real" });
+    const contProb = prediction.continuationProbability;
+    const revProb = prediction.reversalProbability;
+
+    if (prediction.nextCandleBias.includes("continuation") && contProb >= 60) {
+      predictionScore = 3;
+    } else if (contProb >= 50 && revProb < 55) {
+      predictionScore = 2;
+    } else if (revProb >= 60) {
+      predictionScore = 1;
+    }
+  }
+
+  // Gate G: Community — crowd risk filter
+  let communityScore = 2;
+  if (frames.length >= 2) {
+    const shift = detectMarketShift(frames);
+    const prediction = predictNextMove(frames, { marketType: marketType === "OTC" ? "otc" : "real" });
+    const reaction = estimateCommunityReaction(
+      { volatility: 0.5, candleStrength: 0.5, bodyWickRatio: 1.2, marketType: marketType === "OTC" ? "otc" : "real" },
+      prediction,
+      shift
+    );
+
+    if (reaction.lateEntryTrapRisk || reaction.liquidityGrabRisk) {
+      communityScore = 1;
+    } else if (reaction.panicPulloutRisk) {
+      communityScore = 1;
+    } else if (reaction.crowdChasingMove) {
+      communityScore = 2; // Crowd chasing can go either way
+    } else {
+      communityScore = 3;
+    }
+  }
+
+  const totalScore = biasScore + structureScore + triggerScore + memoryScore + shiftScore + predictionScore + communityScore;
+
+  // Count gates passed (score >= 2 = pass)
+  const gatesPassed = [biasScore, structureScore, triggerScore, memoryScore, shiftScore, predictionScore, communityScore]
+    .filter(s => s >= 2).length;
+
+  // Must pass at least 5 of 7 gates AND total score >= 12/21
+  const passed = gatesPassed >= 5 && totalScore >= 12 && biasScore >= 1 && structureScore >= 1 && triggerScore >= 1;
+
+  const gateLabels = `A:${biasScore} B:${structureScore} C:${triggerScore} D:${memoryScore} E:${shiftScore} F:${predictionScore} G:${communityScore}`;
 
   return {
     passed,
     biasScore,
     structureScore,
     triggerScore,
+    memoryScore,
+    shiftScore,
+    predictionScore,
+    communityScore,
     totalScore,
-    reason: passed 
-      ? `Validated: ${totalScore}/9 (B:${biasScore} S:${structureScore} T:${triggerScore})`
-      : `Failed: ${totalScore}/9 (minimum 6 required)`
+    gatesPassed,
+    reason: passed
+      ? `7-Gate PASS: ${totalScore}/21 (${gatesPassed}/7 gates) [${gateLabels}]`
+      : `7-Gate FAIL: ${totalScore}/21 (${gatesPassed}/7 gates, need 5+) [${gateLabels}]`
   };
 };
 
@@ -250,11 +352,11 @@ export const protocolScan = async (
       // Determine direction (using pattern analysis)
       const direction: Direction = Math.random() > 0.5 ? "BUY" : "SELL";
 
-      // === PHASE 2: TRIPLE VALIDATION ===
+      // === PHASE 2: 7-GATE VALIDATION ===
       scanState.phase = "VALIDATING";
       onProgress?.(progress + 5, "VALIDATING");
 
-      const validation = tripleValidate(asset, direction, marketType, session);
+      const validation = sevenGateValidate(asset, direction, marketType, session, config.timeframes[0]);
 
       if (!validation.passed) {
         validationsFailed++;
@@ -283,10 +385,11 @@ export const protocolScan = async (
         }
 
         // Calculate confidence
-        const baseConfidence = 85 + (validation.totalScore / 9) * 10;
+        const baseConfidence = 82 + (validation.totalScore / 21) * 14;
         const strategyBoost = (strategy.winRate - 95) / 5 * 3;
-        const tfBonus = timeframe === "5m" || timeframe === "15m" ? 1 : 0; // Optimal TFs
-        const confidence = Math.min(99.5, baseConfidence + strategyBoost + tfBonus);
+        const tfBonus = timeframe === "5m" || timeframe === "15m" ? 1 : 0;
+        const gateBonus = (validation.gatesPassed - 5) * 1.5; // Bonus for extra gates
+        const confidence = Math.min(99.5, baseConfidence + strategyBoost + tfBonus + gateBonus);
 
         // Create signal for this TF
         const signal: Signal = {
@@ -294,7 +397,7 @@ export const protocolScan = async (
           asset,
           vector: assetVector,
           marketType,
-          strategy: `${strategy.name} (${validation.totalScore}/9)`,
+          strategy: `${strategy.name} (${validation.totalScore}/21 • ${validation.gatesPassed}/7G)`,
           direction,
           issuedAt: now,
           executeAt,

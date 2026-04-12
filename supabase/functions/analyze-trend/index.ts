@@ -271,10 +271,16 @@ For EVERY scan: Recognize market regime, ALL patterns, visible indicators, price
 
 NON-NEGOTIABLE: Do NOT reject trades solely because confidence is below a threshold. If no clean entry exists NOW, return a CONDITIONAL setup.
 
-━━━ SECTION 2: 3-GATE SYSTEM (ALL MUST PASS) ━━━
+━━━ SECTION 2: 7-GATE SYSTEM (MINIMUM 5 OF 7 MUST PASS) ━━━
 GATE A — MARKET REGIME: Classify FIRST (strong/weak trend, range, breakout, chop, etc.)
 GATE B — LOCATION: Is price at a MEANINGFUL level? Mid-nowhere → downgrade.
 GATE C — TRIGGER: At least ONE valid trigger required.
+GATE D — MEMORY CONSISTENCY: Does recent price history support this direction? Conflicting recent frames → downgrade.
+GATE E — REGIME STABILITY: Is the current regime shifting? Exhaustion/fakeout shifts → downgrade or block.
+GATE F — PREDICTION ALIGNMENT: Does next-candle bias support the trade? Reversal risk high → downgrade.
+GATE G — CROWD RISK FILTER: Is this a late-entry trap? Liquidity grab zone? Panic risk? → downgrade.
+
+Score each gate 0-3. Total /21. Minimum 12/21 AND 5/7 gates passed.
 
 ━━━ SECTION 3: MASTER ANALYSIS HIERARCHY ━━━
 A. Market Structure (HH/HL/LH/LL, BOS, CHOCH)
@@ -284,14 +290,16 @@ D. Pattern Recognition (all major patterns)
 E. Indicator Detection & Analysis (all categories)
 F. Session/Time Context: ${activeSession}
 G. News/Global Risk inference
-H. Anti-Trap Filters
+H. Anti-Trap Filters (late entry, liquidity grab, crowd chase)
+I. Memory & Shift Analysis (regime stability check)
+J. Prediction Gate (next-candle continuation vs reversal probability)
 
 ━━━ SECTION 4: ENTRY TIMING ━━━
 Candle-state awareness. Prefer entries at candle open or after clear confirmation. Binary expiry: 1/2/3 candles.
 
 ━━━ SECTION 5: GRADING ━━━
-A_SETUP = High quality | B_SETUP = Tradable with caution | C_SETUP = Speculative/conditional
-NO_TRADE = ONLY if ALL fallbacks fail.
+A_SETUP = High quality (7/7 gates or 6/7 with score ≥16) | B_SETUP = Tradable with caution (5/7 gates) | C_SETUP = Speculative/conditional
+NO_TRADE = ONLY if ALL fallbacks fail OR fewer than 5 gates pass.
 
 ━━━ SECTION 6: INDICATOR STACKS ━━━
 STACK A (Trend): EMA 8, EMA 21, MACD(12,26,9), ADX(14)
@@ -311,7 +319,7 @@ function buildVisionUserPrompt(activeSession: string, mode?: string) {
 You MUST pick the BEST possible outcome. If the current timeframe is not ideal, SUGGEST a better one.
 
 MANDATORY ANALYSIS STEPS:
-1. REGIME 2. STRUCTURE 3. LOCATION 4. PATTERNS 5. INDICATORS 6. PRICE ACTION 7. TRIGGER 8. TIMING 9. SESSION (${activeSession}) 10. RISK
+1. REGIME 2. STRUCTURE 3. LOCATION 4. PATTERNS 5. INDICATORS 6. PRICE ACTION 7. TRIGGER 8. TIMING 9. SESSION (${activeSession}) 10. RISK 11. MEMORY_CONSISTENCY 12. REGIME_SHIFT 13. PREDICTION 14. CROWD_RISK
 
 OUTPUT FORMAT:
 SIGNAL: BUY / SELL / NO_TRADE
@@ -320,6 +328,8 @@ SETUP_GRADE: A_SETUP / B_SETUP / C_SETUP / NO_TRADE
 CONFIDENCE: XX%
 CONFLUENCE_SCORE: X/10
 EXECUTION_QUALITY: X/10
+GATES_PASSED: X/7
+GATE_SCORES: A:X B:X C:X D:X E:X F:X G:X
 EXPECTANCY: POSITIVE_EXPECTANCY_CANDIDATE / NEUTRAL_EXPECTANCY / NEGATIVE_EXPECTANCY_RISK
 MARKET_REGIME: [specific regime]
 ACTIVE_SESSION: ${activeSession}
@@ -413,6 +423,21 @@ function parseAnalysis(analysis: string, activeSession: string, mode?: string) {
   const expectancyMatch = analysis.match(/EXPECTANCY:\s*([\w_]+)/i);
   const expectancy = expectancyMatch ? expectancyMatch[1].trim() : "NEUTRAL_EXPECTANCY";
 
+  // Parse 7-Gate fields
+  const gatesPassedMatch = analysis.match(/GATES_PASSED:\s*(\d+)\s*\/\s*7/i);
+  const gatesPassed = gatesPassedMatch ? parseInt(gatesPassedMatch[1]) : null;
+
+  const gateScoresMatch = analysis.match(/GATE_SCORES:\s*A:(\d)\s*B:(\d)\s*C:(\d)\s*D:(\d)\s*E:(\d)\s*F:(\d)\s*G:(\d)/i);
+  const gateScores = gateScoresMatch ? {
+    regime: parseInt(gateScoresMatch[1]),
+    location: parseInt(gateScoresMatch[2]),
+    trigger: parseInt(gateScoresMatch[3]),
+    memory: parseInt(gateScoresMatch[4]),
+    shift: parseInt(gateScoresMatch[5]),
+    prediction: parseInt(gateScoresMatch[6]),
+    community: parseInt(gateScoresMatch[7]),
+  } : null;
+
   // Parse indicator optimization fields
   const indicatorsViableMatch = analysis.match(/CURRENT_INDICATORS_VIABLE:\s*(YES|NO|PARTIAL)/i);
   const indicatorsViable = indicatorsViableMatch ? indicatorsViableMatch[1].toUpperCase() : null;
@@ -452,7 +477,7 @@ function parseAnalysis(analysis: string, activeSession: string, mode?: string) {
     signalStrength, setupGrade, entryAction, confluenceScore, executionQuality,
     expectancy, marketRegime, strategyUsed, expirySuggestion, triggerCondition,
     activeSession, mode: mode || "in-app", timestamp: new Date().toISOString(),
-    // New indicator optimization fields
+    gatesPassed, gateScores,
     indicatorsViable, bestIndicatorStack, suggestedIndicators,
     optimalTimeframe, timeframeReason,
   };

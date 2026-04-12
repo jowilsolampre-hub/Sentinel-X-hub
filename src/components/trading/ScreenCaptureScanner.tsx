@@ -32,6 +32,12 @@ interface AnalysisResult {
   expirySuggestion?: string;
   triggerCondition?: string;
   timestamp: string;
+  // 7-Gate fields
+  gatesPassed?: number | null;
+  gateScores?: {
+    regime: number; location: number; trigger: number;
+    memory: number; shift: number; prediction: number; community: number;
+  } | null;
   // Indicator optimization fields
   indicatorsViable?: string | null;
   bestIndicatorStack?: string | null;
@@ -294,7 +300,7 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
                 <Badge variant="secondary" className="h-5">{market || "REAL"}</Badge>
                 <Badge variant="secondary" className="h-5">{vector || "Hybrid"}</Badge>
                 <Badge variant="secondary" className="h-5">TF: {timeframe || "5m"}</Badge>
-                <Badge variant="outline" className="h-5 text-primary border-primary/50">3-Gate • Guru Protocol</Badge>
+                <Badge variant="outline" className="h-5 text-primary border-primary/50">7-Gate • Guru Protocol</Badge>
               </div>
 
               {/* Next Candle Countdown */}
@@ -390,10 +396,34 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
                       <p className="text-xs font-bold">{result.executionQuality ?? "—"}/10</p>
                     </div>
                     <div className="p-1.5 rounded border border-border/50 bg-secondary/30">
-                      <p className="text-[9px] text-muted-foreground">Regime</p>
-                      <p className="text-[10px] font-medium truncate">{result.marketRegime || "—"}</p>
+                      <p className="text-[9px] text-muted-foreground">Gates</p>
+                      <p className={`text-xs font-bold ${(result.gatesPassed ?? 0) >= 5 ? "text-success" : (result.gatesPassed ?? 0) >= 3 ? "text-warning" : "text-destructive"}`}>{result.gatesPassed ?? "—"}/7</p>
                     </div>
                   </div>
+
+                  {/* 7-Gate Detail Row */}
+                  {result.gateScores && (
+                    <div className="grid grid-cols-7 gap-1 text-center">
+                      {[
+                        { label: "Regime", score: result.gateScores.regime },
+                        { label: "Location", score: result.gateScores.location },
+                        { label: "Trigger", score: result.gateScores.trigger },
+                        { label: "Memory", score: result.gateScores.memory },
+                        { label: "Shift", score: result.gateScores.shift },
+                        { label: "Predict", score: result.gateScores.prediction },
+                        { label: "Crowd", score: result.gateScores.community },
+                      ].map((gate) => (
+                        <div key={gate.label} className={`p-1 rounded border text-[9px] ${
+                          gate.score >= 2 ? "border-success/40 bg-success/10 text-success" :
+                          gate.score >= 1 ? "border-warning/40 bg-warning/10 text-warning" :
+                          "border-destructive/40 bg-destructive/10 text-destructive"
+                        }`}>
+                          <p className="text-[8px] text-muted-foreground truncate">{gate.label}</p>
+                          <p className="font-bold">{gate.score}/3</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Strategy + Expiry */}
                   {result.strategyUsed && (
@@ -462,7 +492,7 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
                   <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                     <span>{new Date(result.timestamp).toLocaleTimeString()}</span>
                     <span className="flex items-center gap-1">
-                      <Shield className="w-3 h-3" /> SENTINEL X • 3-Gate Guru Protocol
+                      <Shield className="w-3 h-3" /> SENTINEL X • 7-Gate Guru Protocol
                     </span>
                   </div>
                 </div>
@@ -472,8 +502,8 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
               {isAnalyzing && !result && (
                 <div className="flex flex-col items-center gap-2 py-4">
                   <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                  <p className="text-xs text-muted-foreground">3-Gate Guru Analysis...</p>
-                  <p className="text-[10px] text-muted-foreground">Regime → Location → Trigger → Entry Timing</p>
+                  <p className="text-xs text-muted-foreground">7-Gate Guru Analysis...</p>
+                  <p className="text-[10px] text-muted-foreground">Regime → Location → Trigger → Memory → Shift → Prediction → Crowd</p>
                 </div>
               )}
             </div>
