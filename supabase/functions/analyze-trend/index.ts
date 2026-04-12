@@ -423,6 +423,21 @@ function parseAnalysis(analysis: string, activeSession: string, mode?: string) {
   const expectancyMatch = analysis.match(/EXPECTANCY:\s*([\w_]+)/i);
   const expectancy = expectancyMatch ? expectancyMatch[1].trim() : "NEUTRAL_EXPECTANCY";
 
+  // Parse 7-Gate fields
+  const gatesPassedMatch = analysis.match(/GATES_PASSED:\s*(\d+)\s*\/\s*7/i);
+  const gatesPassed = gatesPassedMatch ? parseInt(gatesPassedMatch[1]) : null;
+
+  const gateScoresMatch = analysis.match(/GATE_SCORES:\s*A:(\d)\s*B:(\d)\s*C:(\d)\s*D:(\d)\s*E:(\d)\s*F:(\d)\s*G:(\d)/i);
+  const gateScores = gateScoresMatch ? {
+    regime: parseInt(gateScoresMatch[1]),
+    location: parseInt(gateScoresMatch[2]),
+    trigger: parseInt(gateScoresMatch[3]),
+    memory: parseInt(gateScoresMatch[4]),
+    shift: parseInt(gateScoresMatch[5]),
+    prediction: parseInt(gateScoresMatch[6]),
+    community: parseInt(gateScoresMatch[7]),
+  } : null;
+
   // Parse indicator optimization fields
   const indicatorsViableMatch = analysis.match(/CURRENT_INDICATORS_VIABLE:\s*(YES|NO|PARTIAL)/i);
   const indicatorsViable = indicatorsViableMatch ? indicatorsViableMatch[1].toUpperCase() : null;
@@ -462,7 +477,7 @@ function parseAnalysis(analysis: string, activeSession: string, mode?: string) {
     signalStrength, setupGrade, entryAction, confluenceScore, executionQuality,
     expectancy, marketRegime, strategyUsed, expirySuggestion, triggerCondition,
     activeSession, mode: mode || "in-app", timestamp: new Date().toISOString(),
-    // New indicator optimization fields
+    gatesPassed, gateScores,
     indicatorsViable, bestIndicatorStack, suggestedIndicators,
     optimalTimeframe, timeframeReason,
   };
