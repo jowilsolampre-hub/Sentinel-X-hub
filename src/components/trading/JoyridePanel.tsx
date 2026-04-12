@@ -1,6 +1,6 @@
 // JOYRIDE PRO PACK - UI Panel Component
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { JoyrideConfig, JoyridePresetId, Aggressiveness, JoyrideSignal } from "@/modules/joyride/types";
 import { DEFAULT_JOYRIDE_CONFIG, JOYRIDE_PRO_PACK_ENABLED } from "@/modules/joyride/featureFlag";
 import { getAllPresets, getPreset } from "@/modules/joyride/presets";
@@ -8,6 +8,9 @@ import { joyrideEvaluate, getJoyrideLogs, clearJoyrideLogs, ChartState } from "@
 import { rankPairs } from "@/modules/joyride/pairRanker";
 import { getSessionInfo } from "@/modules/joyride/sessionEngine";
 import { selectBestPreset, PresetSelectorResult } from "@/modules/joyride/presetSelector";
+import { enrichWithMemory, commitMemory, getMemoryStats, MemoryEnrichedState } from "@/modules/joyride/memoryOrchestrator";
+import { fuseScannersResults, FusionResult } from "@/modules/joyride/scannerFusionEngine";
+import { MEMORY_STORE } from "@/modules/joyride/memoryEngine";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -17,24 +20,11 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import {
-  Rocket,
-  Zap,
-  Shield,
-  TrendingUp,
-  TrendingDown,
-  Ban,
-  Clock,
-  Target,
-  Settings,
-  BarChart3,
-  ListChecks,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  ChevronRight,
-  Brain,
-  Lock,
+  Rocket, Zap, Shield, TrendingUp, TrendingDown, Ban, Clock, Target, Settings,
+  BarChart3, ListChecks, AlertTriangle, CheckCircle2, XCircle, ChevronRight,
+  Brain, Lock, Activity, Gauge, Users, GitBranch,
 } from "lucide-react";
 
 interface JoyridePanelProps {
@@ -46,6 +36,8 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
   const [lastSignal, setLastSignal] = useState<JoyrideSignal | null>(null);
   const [lastSelector, setLastSelector] = useState<PresetSelectorResult | null>(null);
   const [autoSelectMode, setAutoSelectMode] = useState(false);
+  const [memoryState, setMemoryState] = useState<MemoryEnrichedState | null>(null);
+  const [fusionResult, setFusionResult] = useState<FusionResult | null>(null);
 
   const session = getSessionInfo();
   const preset = getPreset(config.selectedPreset);
@@ -75,6 +67,10 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
       recentLosses: 0,
     };
 
+    // Enrich with memory
+    const enriched = enrichWithMemory(chart);
+    setMemoryState(enriched);
+
     // Run preset selector
     const selectorResult = selectBestPreset(chart, autoSelectMode ? null : config.selectedPreset);
     setLastSelector(selectorResult);
@@ -87,7 +83,7 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
 
     // If selector says NO_TRADE in auto mode
     if (autoSelectMode && selectorResult.selectorResult === "NO_TRADE") {
-      setLastSignal({
+      const noTradeSignal: JoyrideSignal = {
         preset: "Auto-Select",
         pair: chart.pair || "Unknown",
         timeframe: "-",
@@ -101,15 +97,31 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
         sessionSuitability: 0,
         invalidation: [],
         setupChecklist: [],
-      });
+      };
+      setLastSignal(noTradeSignal);
+      commitMemory(chart, null, "NO_TRADE", 0);
       return;
     }
 
     const result = joyrideEvaluate(chart, activeConfig);
-    if (result) setLastSignal(result);
+    if (result) {
+      setLastSignal(result);
+      commitMemory(chart, result.preset, result.direction, result.confidence);
+
+      // Run fusion with current result
+      const fusion = fuseScannersResults([{
+        source: "joyride_scanner",
+        direction: result.direction,
+        confidence: result.confidence,
+        status: result.direction === "NO_TRADE" ? "NO_TRADE" : "SIGNAL",
+        preset: result.preset,
+      }]);
+      setFusionResult(fusion);
+    }
   };
 
   const logs = getJoyrideLogs();
+  const memStats = getMemoryStats();
 
   const directionIcon = (dir: string) => {
     if (dir === "CALL") return <TrendingUp className="w-5 h-5 text-success" />;
@@ -150,6 +162,9 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
             <Badge variant={config.enabled ? "default" : "secondary"} className="ml-2">
               {config.enabled ? "ACTIVE" : "OFF"}
             </Badge>
+            <Badge variant="outline" className="ml-1 text-xs">
+              {memStats.totalFrames} frames
+            </Badge>
           </SheetTitle>
         </SheetHeader>
 
@@ -180,20 +195,23 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
           </Card>
 
           <Tabs defaultValue="setup" className="space-y-3">
-            <TabsList className="w-full">
-              <TabsTrigger value="setup" className="flex-1 gap-1 text-xs">
+            <TabsList className="w-full grid grid-cols-6">
+              <TabsTrigger value="setup" className="gap-1 text-[10px] px-1">
                 <Settings className="w-3 h-3" /> Setup
               </TabsTrigger>
-              <TabsTrigger value="signal" className="flex-1 gap-1 text-xs">
+              <TabsTrigger value="signal" className="gap-1 text-[10px] px-1">
                 <Target className="w-3 h-3" /> Signal
               </TabsTrigger>
-              <TabsTrigger value="selector" className="flex-1 gap-1 text-xs">
-                <Brain className="w-3 h-3" /> Selector
+              <TabsTrigger value="intel" className="gap-1 text-[10px] px-1">
+                <Activity className="w-3 h-3" /> Intel
               </TabsTrigger>
-              <TabsTrigger value="pairs" className="flex-1 gap-1 text-xs">
+              <TabsTrigger value="selector" className="gap-1 text-[10px] px-1">
+                <Brain className="w-3 h-3" /> Select
+              </TabsTrigger>
+              <TabsTrigger value="pairs" className="gap-1 text-[10px] px-1">
                 <BarChart3 className="w-3 h-3" /> Pairs
               </TabsTrigger>
-              <TabsTrigger value="log" className="flex-1 gap-1 text-xs">
+              <TabsTrigger value="log" className="gap-1 text-[10px] px-1">
                 <ListChecks className="w-3 h-3" /> Log
               </TabsTrigger>
             </TabsList>
@@ -411,6 +429,201 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
               )}
             </TabsContent>
 
+            {/* INTELLIGENCE TAB */}
+            <TabsContent value="intel" className="space-y-3">
+              <Button onClick={runEvaluation} disabled={!config.enabled} variant="outline" className="w-full gap-2">
+                <Activity className="w-4 h-4" />
+                Refresh Intelligence
+              </Button>
+
+              {/* Market Shift */}
+              {memoryState?.marketShift && (
+                <Card className={`p-3 border ${memoryState.marketShift.shiftDetected ? "border-warning/50 bg-warning/5" : "border-border/30"}`}>
+                  <p className="text-xs font-medium mb-2 flex items-center gap-1">
+                    <GitBranch className="w-3 h-3" /> MARKET SHIFT ENGINE
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Shift Detected:</span>
+                      <Badge variant={memoryState.marketShift.shiftDetected ? "default" : "secondary"} className="text-[10px]">
+                        {memoryState.marketShift.shiftDetected ? "YES" : "NO"}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Type:</span>
+                      <span className="font-mono">{memoryState.marketShift.shiftType.replace(/_/g, " ")}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Regime:</span>
+                      <span>{memoryState.marketShift.regimePrev} → {memoryState.marketShift.regimeNow}</span>
+                    </div>
+                    {memoryState.marketShift.shiftDetected && (
+                      <>
+                        <Progress value={memoryState.marketShift.shiftStrength} className="h-1.5 mt-1" />
+                        <p className="text-muted-foreground italic">{memoryState.marketShift.meaning}</p>
+                      </>
+                    )}
+                  </div>
+                </Card>
+              )}
+
+              {/* Prediction */}
+              {memoryState?.prediction && (
+                <Card className="p-3 border border-border/30">
+                  <p className="text-xs font-medium mb-2 flex items-center gap-1">
+                    <Gauge className="w-3 h-3" /> PREDICTION ENGINE
+                  </p>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Next Candle Bias:</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {memoryState.prediction.nextCandleBias.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-muted-foreground">Continuation</span>
+                        <span className="font-mono">{memoryState.prediction.continuationProbability}%</span>
+                      </div>
+                      <Progress value={memoryState.prediction.continuationProbability} className="h-1.5" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-muted-foreground">Reversal</span>
+                        <span className="font-mono">{memoryState.prediction.reversalProbability}%</span>
+                      </div>
+                      <Progress value={memoryState.prediction.reversalProbability} className="h-1.5" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-muted-foreground">Pullback</span>
+                        <span className="font-mono">{memoryState.prediction.pullbackProbability}%</span>
+                      </div>
+                      <Progress value={memoryState.prediction.pullbackProbability} className="h-1.5" />
+                    </div>
+                    <p className="text-muted-foreground italic mt-1">{memoryState.prediction.predictionReason}</p>
+                  </div>
+                </Card>
+              )}
+
+              {/* Community Reaction */}
+              {memoryState?.communityReaction && (
+                <Card className="p-3 border border-border/30">
+                  <p className="text-xs font-medium mb-2 flex items-center gap-1">
+                    <Users className="w-3 h-3" /> COMMUNITY REACTION
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Dominant:</span>
+                      <span className="font-medium">{memoryState.communityReaction.dominantReaction.replace(/_/g, " ")}</span>
+                    </div>
+                    <p className="text-muted-foreground italic">{memoryState.communityReaction.reactionSummary}</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {memoryState.communityReaction.crowdChasingMove && (
+                        <Badge variant="outline" className="text-[10px]">🏃 Crowd Chasing</Badge>
+                      )}
+                      {memoryState.communityReaction.panicPulloutRisk && (
+                        <Badge variant="destructive" className="text-[10px]">😰 Panic Risk</Badge>
+                      )}
+                      {memoryState.communityReaction.lateEntryTrapRisk && (
+                        <Badge variant="secondary" className="text-[10px]">⚠️ Late Entry Trap</Badge>
+                      )}
+                      {memoryState.communityReaction.liquidityGrabRisk && (
+                        <Badge variant="secondary" className="text-[10px]">💧 Liquidity Grab</Badge>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {/* Rolling Analysis */}
+              {memoryState?.rollingAnalysis && memoryState.rollingAnalysis.rollingStatus !== "empty" && (
+                <Card className="p-3 border border-border/30">
+                  <p className="text-xs font-medium mb-2 flex items-center gap-1">
+                    <Activity className="w-3 h-3" /> ROLLING FRAME ANALYSIS
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Bias:</span>
+                      <Badge variant={
+                        memoryState.rollingAnalysis.rollingBias === "bullish" ? "default" :
+                        memoryState.rollingAnalysis.rollingBias === "bearish" ? "destructive" : "secondary"
+                      } className="text-[10px]">
+                        {memoryState.rollingAnalysis.rollingBias}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Trend Consistency:</span>
+                      <span className="font-mono">{memoryState.rollingAnalysis.trendConsistency}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Context Quality:</span>
+                      <span className="font-mono">{memoryState.rollingAnalysis.avgConfidenceContext}</span>
+                    </div>
+                    {memoryState.rollingAnalysis.recentRegimes.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {memoryState.rollingAnalysis.recentRegimes.map((r, i) => (
+                          <Badge key={i} variant="outline" className="text-[10px]">{r}</Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
+              {/* Fusion */}
+              {fusionResult && (
+                <Card className={`p-3 border ${
+                  fusionResult.finalDirection === "CALL" ? "border-success/50 bg-success/5" :
+                  fusionResult.finalDirection === "PUT" ? "border-destructive/50 bg-destructive/5" :
+                  "border-border/30"
+                }`}>
+                  <p className="text-xs font-medium mb-2 flex items-center gap-1">
+                    <Zap className="w-3 h-3" /> FUSION ENGINE
+                  </p>
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Final Decision:</span>
+                      <span className={`font-bold ${
+                        fusionResult.finalDirection === "CALL" ? "text-success" :
+                        fusionResult.finalDirection === "PUT" ? "text-destructive" :
+                        "text-muted-foreground"
+                      }`}>{fusionResult.finalDirection}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Confidence:</span>
+                      <span className="font-mono">{fusionResult.finalConfidence}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Consensus:</span>
+                      <span className="font-mono">{fusionResult.consensusStrength}%</span>
+                    </div>
+                    <p className="text-muted-foreground italic">{fusionResult.reason}</p>
+                    {fusionResult.sourceBreakdown.length > 1 && (
+                      <div className="mt-1 space-y-0.5">
+                        {fusionResult.sourceBreakdown.map((s, i) => (
+                          <div key={i} className="flex justify-between">
+                            <span>{s.source}</span>
+                            <span className={`font-mono ${
+                              s.direction === "CALL" ? "text-success" :
+                              s.direction === "PUT" ? "text-destructive" : "text-muted-foreground"
+                            }`}>{s.direction} ({s.confidence}%)</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+
+              {!memoryState && (
+                <Card className="p-6 border border-border/50 text-center">
+                  <Activity className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Run an evaluation to see intelligence data</p>
+                </Card>
+              )}
+            </TabsContent>
+
             {/* SELECTOR TAB */}
             <TabsContent value="selector" className="space-y-3">
               <Card className="p-3 border border-primary/30 bg-primary/5">
@@ -429,7 +642,6 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
 
               {lastSelector && (
                 <>
-                  {/* Selection Result */}
                   <Card className={`p-3 border ${
                     lastSelector.selectorResult === "SELECTED" ? "border-success/50 bg-success/5" :
                     lastSelector.selectorResult === "FALLBACK_SAFE_MODE" ? "border-warning/50 bg-warning/5" :
@@ -458,7 +670,6 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
                     </div>
                   </Card>
 
-                  {/* Preset Score Table */}
                   <div className="space-y-1.5">
                     <p className="text-xs font-medium text-muted-foreground">PRESET SCORES</p>
                     {lastSelector.presetScores.map((item) => (
@@ -482,8 +693,6 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
                             {item.blocked ? "BLOCKED" : item.score}
                           </span>
                         </div>
-
-                        {/* Reasons/penalties compact */}
                         {(item.reasons.length > 0 || item.penalties.length > 0 || item.blockReasons.length > 0) && (
                           <div className="mt-1.5 space-y-0.5">
                             {item.reasons.slice(0, 2).map((r, i) => (
@@ -501,7 +710,6 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
                     ))}
                   </div>
 
-                  {/* Blocked Presets Summary */}
                   {lastSelector.blockedPresets.length > 0 && (
                     <Card className="p-3 border border-destructive/20 bg-destructive/5">
                       <p className="text-xs font-medium text-destructive mb-1">
@@ -555,9 +763,14 @@ export const JoyridePanel = ({ chartState }: JoyridePanelProps) => {
             <TabsContent value="log" className="space-y-2">
               <div className="flex justify-between items-center">
                 <p className="text-xs text-muted-foreground">{logs.length} entries</p>
-                <Button variant="ghost" size="sm" onClick={clearJoyrideLogs} className="text-xs h-7">
-                  Clear
-                </Button>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => MEMORY_STORE.clear()} className="text-xs h-7">
+                    Clear Memory
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={clearJoyrideLogs} className="text-xs h-7">
+                    Clear Logs
+                  </Button>
+                </div>
               </div>
               {logs.slice(-20).reverse().map((log, i) => (
                 <div key={i} className="p-2 bg-secondary/20 rounded text-xs space-y-1">
