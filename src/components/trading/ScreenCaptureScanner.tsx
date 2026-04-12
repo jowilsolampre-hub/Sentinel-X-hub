@@ -396,10 +396,34 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
                       <p className="text-xs font-bold">{result.executionQuality ?? "—"}/10</p>
                     </div>
                     <div className="p-1.5 rounded border border-border/50 bg-secondary/30">
-                      <p className="text-[9px] text-muted-foreground">Regime</p>
-                      <p className="text-[10px] font-medium truncate">{result.marketRegime || "—"}</p>
+                      <p className="text-[9px] text-muted-foreground">Gates</p>
+                      <p className={`text-xs font-bold ${(result.gatesPassed ?? 0) >= 5 ? "text-success" : (result.gatesPassed ?? 0) >= 3 ? "text-warning" : "text-destructive"}`}>{result.gatesPassed ?? "—"}/7</p>
                     </div>
                   </div>
+
+                  {/* 7-Gate Detail Row */}
+                  {result.gateScores && (
+                    <div className="grid grid-cols-7 gap-1 text-center">
+                      {[
+                        { label: "Regime", score: result.gateScores.regime },
+                        { label: "Location", score: result.gateScores.location },
+                        { label: "Trigger", score: result.gateScores.trigger },
+                        { label: "Memory", score: result.gateScores.memory },
+                        { label: "Shift", score: result.gateScores.shift },
+                        { label: "Predict", score: result.gateScores.prediction },
+                        { label: "Crowd", score: result.gateScores.community },
+                      ].map((gate) => (
+                        <div key={gate.label} className={`p-1 rounded border text-[9px] ${
+                          gate.score >= 2 ? "border-success/40 bg-success/10 text-success" :
+                          gate.score >= 1 ? "border-warning/40 bg-warning/10 text-warning" :
+                          "border-destructive/40 bg-destructive/10 text-destructive"
+                        }`}>
+                          <p className="text-[8px] text-muted-foreground truncate">{gate.label}</p>
+                          <p className="font-bold">{gate.score}/3</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Strategy + Expiry */}
                   {result.strategyUsed && (
