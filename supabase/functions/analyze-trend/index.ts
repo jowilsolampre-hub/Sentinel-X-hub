@@ -271,10 +271,16 @@ For EVERY scan: Recognize market regime, ALL patterns, visible indicators, price
 
 NON-NEGOTIABLE: Do NOT reject trades solely because confidence is below a threshold. If no clean entry exists NOW, return a CONDITIONAL setup.
 
-━━━ SECTION 2: 3-GATE SYSTEM (ALL MUST PASS) ━━━
-GATE A — MARKET REGIME: Classify FIRST (strong/weak trend, range, breakout, chop, etc.)
+━━━ SECTION 2: 7-GATE SYSTEM (Min 3/7 MUST PASS) ━━━
+GATE A — REGIME: Classify market direction (strong/weak trend, range, breakout, chop)
 GATE B — LOCATION: Is price at a MEANINGFUL level? Mid-nowhere → downgrade.
 GATE C — TRIGGER: At least ONE valid trigger required.
+GATE D — MEMORY: Multi-frame consistency — does this setup repeat across recent scans?
+GATE E — SHIFT: Regime stability — is the current state shifting or exhausting?
+GATE F — PREDICTION: Next-candle bias — does the predicted move align with signal?
+GATE G — COMMUNITY: Crowd risk — is the crowd chasing? Trap filter.
+
+SCORING: Each gate 0-3. Minimum 3/7 gates must score ≥ 2 AND total ≥ 10/21.
 
 ━━━ SECTION 3: MASTER ANALYSIS HIERARCHY ━━━
 A. Market Structure (HH/HL/LH/LL, BOS, CHOCH)

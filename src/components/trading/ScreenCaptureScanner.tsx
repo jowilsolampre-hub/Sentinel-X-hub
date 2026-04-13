@@ -1,6 +1,6 @@
 // SENTINEL X - Screen Capture Scanner (Windows Overlay Mode)
 // Disciplined, confluence-based, entry-timing expert scanner
-// Full 14-point guru protocol with 3-gate system
+// Full 14-point guru protocol with 7-gate validation system
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui/card";
@@ -294,7 +294,7 @@ export const ScreenCaptureScanner = ({ market, vector, timeframe }: ScreenCaptur
                 <Badge variant="secondary" className="h-5">{market || "REAL"}</Badge>
                 <Badge variant="secondary" className="h-5">{vector || "Hybrid"}</Badge>
                 <Badge variant="secondary" className="h-5">TF: {timeframe || "5m"}</Badge>
-                <Badge variant="outline" className="h-5 text-primary border-primary/50">3-Gate • Guru Protocol</Badge>
+                <Badge variant="outline" className="h-5 text-primary border-primary/50">7-Gate • Guru Protocol</Badge>
               </div>
 
               {/* Next Candle Countdown */}
