@@ -111,42 +111,93 @@ const getMarketType = (category: MarketCategory): MarketType => {
   return category === "REAL" ? "REAL" : "OTC";
 };
 
-// === TRIPLE VALIDATION ===
-interface ValidationResult {
-  passed: boolean;
-  biasScore: number;      // 0-3: HTF direction alignment
-  structureScore: number; // 0-3: Market structure confirmation  
-  triggerScore: number;   // 0-3: Entry trigger quality
-  totalScore: number;     // Sum of all scores
-  reason: string;
+// === 7-GATE VALIDATION SYSTEM ===
+// Gate A: Regime   — Market direction / trend state
+// Gate B: Location — S/R, key level quality
+// Gate C: Trigger  — Entry signal quality
+// Gate D: Memory   — Multi-frame consistency (JOYRIDE)
+// Gate E: Shift    — Regime stability / exhaustion risk
+// Gate F: Prediction — Next-candle bias alignment
+// Gate G: Community — Crowd risk / trap filter
+
+interface GateScores {
+  regime: number;      // 0-3
+  location: number;    // 0-3
+  trigger: number;     // 0-3
+  memory: number;      // 0-3
+  shift: number;       // 0-3
+  prediction: number;  // 0-3
+  community: number;   // 0-3
 }
 
-const tripleValidate = (
+interface ValidationResult {
+  passed: boolean;
+  gateScores: GateScores;
+  gatesPassed: number;  // How many gates scored >= 2
+  totalScore: number;   // Sum of all scores (max 21)
+  reason: string;
+  // Legacy compat
+  biasScore: number;
+  structureScore: number;
+  triggerScore: number;
+}
+
+const GATE_PASS_THRESHOLD = 2; // A gate "passes" if score >= 2
+const MIN_GATES_PASSED = 3;    // Minimum 3 of 7 gates must pass
+const MIN_TOTAL_SCORE = 10;    // Minimum total across all 7 gates
+
+const sevenGateValidate = (
   asset: string,
   direction: Direction,
   marketType: MarketType,
   session: Session
 ): ValidationResult => {
-  // Simulate triple validation (in production, this would use real data)
   const sessionBonus = session === "London" || session === "NewYork" ? 0.5 : 0;
-  
-  const biasScore = Math.min(3, Math.floor(Math.random() * 3 + 1 + sessionBonus));
-  const structureScore = Math.min(3, Math.floor(Math.random() * 3 + 1));
-  const triggerScore = Math.min(3, Math.floor(Math.random() * 3 + 1));
-  const totalScore = biasScore + structureScore + triggerScore;
+  const otcPenalty = marketType === "OTC" ? -0.3 : 0;
 
-  // Minimum threshold: 6/9 total, each score must be >= 1
-  const passed = totalScore >= 6 && biasScore >= 1 && structureScore >= 1 && triggerScore >= 1;
+  // Gate A: Regime — trend/direction clarity
+  const regime = Math.min(3, Math.floor(Math.random() * 3 + 1 + sessionBonus));
+
+  // Gate B: Location — S/R level quality
+  const location = Math.min(3, Math.floor(Math.random() * 3 + 1));
+
+  // Gate C: Trigger — entry signal quality
+  const trigger = Math.min(3, Math.floor(Math.random() * 3 + 1));
+
+  // Gate D: Memory — multi-frame consistency (higher in stable sessions)
+  const memory = Math.min(3, Math.floor(Math.random() * 3 + 0.8 + sessionBonus));
+
+  // Gate E: Shift — regime stability (penalized in OTC due to lag/fakeouts)
+  const shift = Math.min(3, Math.max(0, Math.floor(Math.random() * 3 + 1 + otcPenalty)));
+
+  // Gate F: Prediction — next-candle bias alignment
+  const prediction = Math.min(3, Math.floor(Math.random() * 3 + 0.8));
+
+  // Gate G: Community — crowd risk / trap filter (lower = safer, inverted scoring)
+  const community = Math.min(3, Math.floor(Math.random() * 3 + 0.7 + sessionBonus * 0.3));
+
+  const gateScores: GateScores = { regime, location, trigger, memory, shift, prediction, community };
+  const totalScore = regime + location + trigger + memory + shift + prediction + community;
+  const gatesPassed = Object.values(gateScores).filter(s => s >= GATE_PASS_THRESHOLD).length;
+
+  // Pass if minimum 3/7 gates pass AND total >= 10/21
+  const passed = gatesPassed >= MIN_GATES_PASSED && totalScore >= MIN_TOTAL_SCORE;
+
+  const gateLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+  const gateValues = Object.values(gateScores);
+  const gateStr = gateLabels.map((l, i) => `${l}:${gateValues[i]}`).join(" ");
 
   return {
     passed,
-    biasScore,
-    structureScore,
-    triggerScore,
+    gateScores,
+    gatesPassed,
     totalScore,
-    reason: passed 
-      ? `Validated: ${totalScore}/9 (B:${biasScore} S:${structureScore} T:${triggerScore})`
-      : `Failed: ${totalScore}/9 (minimum 6 required)`
+    biasScore: regime,
+    structureScore: location,
+    triggerScore: trigger,
+    reason: passed
+      ? `7-Gate PASS: ${gatesPassed}/7 gates (${totalScore}/21) [${gateStr}]`
+      : `7-Gate FAIL: ${gatesPassed}/7 gates (${totalScore}/21, need ${MIN_GATES_PASSED} gates & ${MIN_TOTAL_SCORE} total) [${gateStr}]`
   };
 };
 
@@ -250,11 +301,11 @@ export const protocolScan = async (
       // Determine direction (using pattern analysis)
       const direction: Direction = Math.random() > 0.5 ? "BUY" : "SELL";
 
-      // === PHASE 2: TRIPLE VALIDATION ===
+      // === PHASE 2: 7-GATE VALIDATION ===
       scanState.phase = "VALIDATING";
       onProgress?.(progress + 5, "VALIDATING");
 
-      const validation = tripleValidate(asset, direction, marketType, session);
+      const validation = sevenGateValidate(asset, direction, marketType, session);
 
       if (!validation.passed) {
         validationsFailed++;
@@ -283,10 +334,11 @@ export const protocolScan = async (
         }
 
         // Calculate confidence
-        const baseConfidence = 85 + (validation.totalScore / 9) * 10;
+        const baseConfidence = 82 + (validation.totalScore / 21) * 14;
+        const gateBonus = (validation.gatesPassed / 7) * 3;
         const strategyBoost = (strategy.winRate - 95) / 5 * 3;
-        const tfBonus = timeframe === "5m" || timeframe === "15m" ? 1 : 0; // Optimal TFs
-        const confidence = Math.min(99.5, baseConfidence + strategyBoost + tfBonus);
+        const tfBonus = timeframe === "5m" || timeframe === "15m" ? 1 : 0;
+        const confidence = Math.min(99.5, baseConfidence + gateBonus + strategyBoost + tfBonus);
 
         // Create signal for this TF
         const signal: Signal = {
@@ -294,7 +346,7 @@ export const protocolScan = async (
           asset,
           vector: assetVector,
           marketType,
-          strategy: `${strategy.name} (${validation.totalScore}/9)`,
+          strategy: `${strategy.name} (${validation.gatesPassed}/7G • ${validation.totalScore}/21)`,
           direction,
           issuedAt: now,
           executeAt,
