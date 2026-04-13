@@ -7,6 +7,10 @@ import { detectActiveSession } from "./sessionLock";
 import { isAssetOnCooldown, setAssetCooldown } from "./assetCooldown";
 import { MarketCategory } from "@/components/trading/MarketCategorySelector";
 import { TimeframeOption, getTimeframeMinutes } from "@/components/trading/TimeframeSelector";
+import { MEMORY_STORE } from "@/modules/joyride/memoryEngine";
+import { detectMarketShift } from "@/modules/joyride/marketShiftEngine";
+import { predictNextMove } from "@/modules/joyride/predictionEngine";
+import { estimateCommunityReaction } from "@/modules/joyride/communityReactionEngine";
 
 // === PROTOCOL CONFIG ===
 export interface ScanConfig {
@@ -155,32 +159,129 @@ const sevenGateValidate = (
   const sessionBonus = session === "London" || session === "NewYork" ? 0.5 : 0;
   const otcPenalty = marketType === "OTC" ? -0.3 : 0;
 
-  // Gate A: Regime — trend/direction clarity
+  // Gate A: Regime — trend/direction clarity (simulated)
   const regime = Math.min(3, Math.floor(Math.random() * 3 + 1 + sessionBonus));
 
-  // Gate B: Location — S/R level quality
+  // Gate B: Location — S/R level quality (simulated)
   const location = Math.min(3, Math.floor(Math.random() * 3 + 1));
 
-  // Gate C: Trigger — entry signal quality
+  // Gate C: Trigger — entry signal quality (simulated)
   const trigger = Math.min(3, Math.floor(Math.random() * 3 + 1));
 
-  // Gate D: Memory — multi-frame consistency (higher in stable sessions)
-  const memory = Math.min(3, Math.floor(Math.random() * 3 + 0.8 + sessionBonus));
+  // === GATES D-G: REAL JOYRIDE ENGINE DATA ===
+  // Determine timeframe key for memory lookup
+  const tfKey = "5m"; // default scan timeframe
+  const frames = MEMORY_STORE.recentWindow(asset, tfKey, 5);
+  const hasMemory = frames.length >= 2;
 
-  // Gate E: Shift — regime stability (penalized in OTC due to lag/fakeouts)
-  const shift = Math.min(3, Math.max(0, Math.floor(Math.random() * 3 + 1 + otcPenalty)));
+  // Gate D: Memory — multi-frame consistency from real MemoryStore
+  let memoryScore: number;
+  if (!hasMemory) {
+    // No memory yet — neutral score with session bonus
+    memoryScore = Math.min(3, Math.floor(Math.random() * 2 + 1 + sessionBonus));
+  } else {
+    // Score based on trend consistency across frames
+    const trendStates = frames.map(f => f.trendState);
+    const latestTrend = trendStates[trendStates.length - 1];
+    const consistent = trendStates.filter(t => t === latestTrend).length;
+    const consistencyRatio = consistent / trendStates.length;
+    // Also factor structure clarity stability
+    const structValues = frames.map(f => f.structureClarity);
+    const avgStruct = structValues.reduce((a, b) => a + b, 0) / structValues.length;
+    const structVariance = structValues.reduce((a, v) => a + Math.abs(v - avgStruct), 0) / structValues.length;
+    const stabilityBonus = structVariance < 10 ? 1 : structVariance < 20 ? 0.5 : 0;
 
-  // Gate F: Prediction — next-candle bias alignment
-  const prediction = Math.min(3, Math.floor(Math.random() * 3 + 0.8));
+    memoryScore = Math.min(3, Math.max(0, Math.round(consistencyRatio * 2 + stabilityBonus)));
+  }
 
-  // Gate G: Community — crowd risk / trap filter (lower = safer, inverted scoring)
-  const community = Math.min(3, Math.floor(Math.random() * 3 + 0.7 + sessionBonus * 0.3));
+  // Gate E: Shift — regime stability from real MarketShiftEngine
+  let shiftScore: number;
+  if (!hasMemory) {
+    shiftScore = Math.min(3, Math.max(0, Math.floor(Math.random() * 2 + 1 + otcPenalty)));
+  } else {
+    const shift = detectMarketShift(frames);
+    if (!shift.shiftDetected) {
+      // Stable regime = high score
+      shiftScore = 3;
+    } else {
+      // Shift detected — score inversely to shift strength
+      // Strong shift = low score (unstable), weak shift = medium score
+      shiftScore = shift.shiftStrength > 60 ? 0 : shift.shiftStrength > 35 ? 1 : 2;
+      // Certain shift types are less harmful
+      if (shift.shiftType === "compression_to_expansion") shiftScore = Math.min(3, shiftScore + 1);
+      if (shift.shiftType === "trend_to_exhaustion") shiftScore = Math.max(0, shiftScore - 1);
+    }
+    shiftScore = Math.min(3, Math.max(0, shiftScore));
+  }
 
-  const gateScores: GateScores = { regime, location, trigger, memory, shift, prediction, community };
-  const totalScore = regime + location + trigger + memory + shift + prediction + community;
+  // Gate F: Prediction — next-candle bias alignment from real PredictionEngine
+  let predictionScore: number;
+  if (!hasMemory) {
+    predictionScore = Math.min(3, Math.floor(Math.random() * 2 + 1));
+  } else {
+    const prediction = predictNextMove(frames, { marketType: marketType.toLowerCase() });
+    const bias = prediction.nextCandleBias;
+
+    // Check if prediction aligns with our signal direction
+    const bullishBias = bias.includes("bullish") && !bias.includes("pullback");
+    const bearishBias = bias.includes("bearish") && !bias.includes("pullback");
+    const aligned = (direction === "BUY" && bullishBias) || (direction === "SELL" && bearishBias);
+    const opposed = (direction === "BUY" && bearishBias) || (direction === "SELL" && bullishBias);
+
+    if (aligned && prediction.continuationProbability >= 60) {
+      predictionScore = 3;
+    } else if (aligned) {
+      predictionScore = 2;
+    } else if (opposed) {
+      predictionScore = prediction.reversalProbability > 65 ? 0 : 1;
+    } else {
+      // Neutral bias
+      predictionScore = prediction.continuationProbability >= 55 ? 2 : 1;
+    }
+  }
+
+  // Gate G: Community — crowd risk from real CommunityReactionEngine
+  let communityScore: number;
+  if (!hasMemory) {
+    communityScore = Math.min(3, Math.floor(Math.random() * 2 + 1 + sessionBonus * 0.3));
+  } else {
+    const latest = frames[frames.length - 1];
+    const prediction = predictNextMove(frames, { marketType: marketType.toLowerCase() });
+    const shift = detectMarketShift(frames);
+    const community = estimateCommunityReaction(
+      {
+        volatility: latest.volatilityScore / 100,
+        candleStrength: latest.structureClarity / 100,
+        bodyWickRatio: (100 - latest.falseBreakRisk) / 40,
+        rsiValue: latest.exhaustionRisk > 55 ? 75 : 50,
+        marketType: marketType.toLowerCase(),
+      },
+      prediction,
+      shift
+    );
+
+    // Fewer risks = higher score
+    let riskCount = 0;
+    if (community.crowdChasingMove) riskCount++;
+    if (community.panicPulloutRisk) riskCount++;
+    if (community.lateEntryTrapRisk) riskCount++;
+    if (community.liquidityGrabRisk) riskCount++;
+
+    communityScore = Math.max(0, 3 - riskCount);
+  }
+
+  const gateScores: GateScores = {
+    regime,
+    location,
+    trigger,
+    memory: memoryScore,
+    shift: shiftScore,
+    prediction: predictionScore,
+    community: communityScore,
+  };
+  const totalScore = Object.values(gateScores).reduce((a, b) => a + b, 0);
   const gatesPassed = Object.values(gateScores).filter(s => s >= GATE_PASS_THRESHOLD).length;
 
-  // Pass if minimum 3/7 gates pass AND total >= 10/21
   const passed = gatesPassed >= MIN_GATES_PASSED && totalScore >= MIN_TOTAL_SCORE;
 
   const gateLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
