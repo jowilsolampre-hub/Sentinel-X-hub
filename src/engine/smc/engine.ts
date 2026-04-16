@@ -221,7 +221,7 @@ export const generateSMCSignal = (
   if (confidence >= 60) {
     if (bias === "bullish" || (confirm.bullish && !confirm.bearish)) side = "buy";
     else if (bias === "bearish" || (confirm.bearish && !confirm.bullish)) side = "sell";
-    else side = bias === "bullish" ? "buy" : bias === "bearish" ? "sell" : "neutral";
+    else side = (bias as string) === "bullish" ? "buy" : (bias as string) === "bearish" ? "sell" : "neutral";
   }
 
   // ── trade plan ──
