@@ -1,6 +1,9 @@
 // SENTINEL X - Bybit Data Feed
-import { corsHeaders } from '@supabase/supabase-js/cors';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 const BYBIT_BASE = "https://api.bybit.com/v5";
 
 Deno.serve(async (req) => {
