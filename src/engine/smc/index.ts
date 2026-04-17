@@ -13,6 +13,7 @@ export {
   getActiveSignalCount,
   clearSignalMemory,
   computeFusionScore,
+  joyridePredictionToFusion,
   FUSION_WEIGHTS,
   DEFAULT_RUNNER_CONFIG,
 } from "./liveRunner";
@@ -20,6 +21,8 @@ export type {
   ExchangeSource,
   LiveRunnerConfig,
   FusionInput,
+  FusionOutput,
+  JoyridePredictionLike,
 } from "./liveRunner";
 export type {
   SMCCandle,
