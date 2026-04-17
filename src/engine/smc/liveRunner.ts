@@ -265,32 +265,79 @@ export const clearSignalMemory = (): void => {
 
 // ── fusion scoring (JOYRIDE / TRADESCAN style) ──
 export interface FusionInput {
-  smcScore: number;       // 0-100 from SMC engine
-  liveScannerScore: number; // 0-100 from screen scanner
-  imageVisionScore: number; // 0-100 from chart scanner
-  externalScore: number;    // 0-100 from external scanners
-  momentumScore: number;    // 0-100 from candle momentum/volume
+  smcScore: number;          // 0-100 from SMC engine
+  liveScannerScore: number;  // 0-100 from screen scanner
+  imageVisionScore: number;  // 0-100 from chart scanner
+  externalScore: number;     // 0-100 from external scanners
+  momentumScore: number;     // 0-100 from candle momentum/volume
+  joyrideScore?: number;     // 0-100 from JOYRIDE PRO prediction engine
+  joyrideBias?: "bullish" | "bearish" | "neutral";
 }
 
+// Weights sum to 1.0 (JOYRIDE adds prediction-layer intelligence)
 export const FUSION_WEIGHTS = {
-  smc: 0.45,
-  liveScanner: 0.20,
-  imageVision: 0.15,
-  external: 0.10,
-  momentum: 0.10,
+  smc: 0.40,
+  joyride: 0.15,
+  liveScanner: 0.18,
+  imageVision: 0.12,
+  external: 0.08,
+  momentum: 0.07,
 };
 
-export const computeFusionScore = (input: FusionInput): {
+export interface FusionOutput {
   score: number;
   tier: "STRONG" | "WATCHLIST" | "NO_TRADE";
-} => {
+  bias?: "bullish" | "bearish" | "neutral";
+  contributions: Record<string, number>;
+}
+
+export const computeFusionScore = (input: FusionInput): FusionOutput => {
+  const joyride = input.joyrideScore ?? 50; // neutral default if missing
+  const contributions = {
+    smc: input.smcScore * FUSION_WEIGHTS.smc,
+    joyride: joyride * FUSION_WEIGHTS.joyride,
+    liveScanner: input.liveScannerScore * FUSION_WEIGHTS.liveScanner,
+    imageVision: input.imageVisionScore * FUSION_WEIGHTS.imageVision,
+    external: input.externalScore * FUSION_WEIGHTS.external,
+    momentum: input.momentumScore * FUSION_WEIGHTS.momentum,
+  };
   const score = Math.round(
-    input.smcScore * FUSION_WEIGHTS.smc +
-    input.liveScannerScore * FUSION_WEIGHTS.liveScanner +
-    input.imageVisionScore * FUSION_WEIGHTS.imageVision +
-    input.externalScore * FUSION_WEIGHTS.external +
-    input.momentumScore * FUSION_WEIGHTS.momentum
+    Object.values(contributions).reduce((a, b) => a + b, 0)
   );
   const tier = score >= 75 ? "STRONG" : score >= 60 ? "WATCHLIST" : "NO_TRADE";
-  return { score, tier };
+  return {
+    score,
+    tier,
+    bias: input.joyrideBias,
+    contributions: Object.fromEntries(
+      Object.entries(contributions).map(([k, v]) => [k, Math.round(v * 100) / 100])
+    ),
+  };
+};
+
+// ── JOYRIDE prediction → fusion score adapter ──
+// Converts a PredictionInfo-shaped object into a 0-100 score + directional bias.
+export interface JoyridePredictionLike {
+  nextCandleBias: string;
+  continuationProbability: number;
+  reversalProbability: number;
+  pullbackProbability: number;
+}
+
+export const joyridePredictionToFusion = (
+  p: JoyridePredictionLike
+): { score: number; bias: "bullish" | "bearish" | "neutral" } => {
+  // Score = strongest directional conviction, penalized by competing reversal/pullback risk
+  const dominant = Math.max(p.continuationProbability, p.reversalProbability);
+  const noise = Math.min(p.continuationProbability, p.reversalProbability);
+  const pullbackPenalty = Math.max(0, p.pullbackProbability - 50) * 0.4;
+  const raw = dominant - noise * 0.5 - pullbackPenalty;
+  const score = Math.max(0, Math.min(100, Math.round(raw + 50 * (dominant / 100))));
+
+  let bias: "bullish" | "bearish" | "neutral" = "neutral";
+  const b = p.nextCandleBias.toLowerCase();
+  if (b.includes("bullish")) bias = "bullish";
+  else if (b.includes("bearish")) bias = "bearish";
+
+  return { score, bias };
 };
